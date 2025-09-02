@@ -1,0 +1,359 @@
+Below is a practical, senior‑level playbook for getting real value from LLMs and code agents in a large, client‑facing frontend codebase. It’s tool‑agnostic, but I name specific options where that helps and cite relevant docs/news so you can dig deeper.
+
+---
+
+## 0) What LLMs and agents are best at (today)
+
+* **Repo‑aware Q\&A & code search:** Ask natural‑language questions about modules, flows, and ownership (e.g., “Where do we normalize currency for the checkout?”). Tools like Sourcegraph Cody and IDE agents make this effective by pulling context from your code. ([GitHub][1])
+* **Change scaffolding:** Generate components, tests, Storybook stories, PR descriptions, and migration sketches, then you refine. GitHub Copilot supports PR summaries and automated code reviews. ([GitHub Docs][2])
+* **A11y, testing, and visual regression:** Wire up automated checks (axe‑core with Playwright; visual tests via Chromatic/Percy) and let the LLM fill in gaps and explain failures. ([Playwright][3], [Storybook][4], [BrowserStack][5])
+* **Safe, scoped automation:** New repo‑level **coding agents** can take a ticket, open a branch in an isolated environment, run tests/linters, and open a PR for your review (no direct merges). GitHub’s Copilot coding agent (public preview) does this on a secure, cloud dev environment via Actions. ([The GitHub Blog][6])
+
+> Calibrate expectations: autonomous coding on real bugs is improving but not magical. Benchmarks like SWE‑bench show rising solve rates, but performance varies by task and guardrails matter. Use agents for “low‑to‑medium complexity” and iterate. ([The GitHub Blog][6], [SWE-bench][7])
+
+---
+
+## 1) A 90‑day rollout plan
+
+### Phase 1 (Weeks 1–2): Personal productivity + guardrails
+
+**Goal:** Make every engineer faster without risking the codebase.
+
+1. **Pick your daily driver(s)**
+
+   * IDE assistant (Copilot, Cursor, JetBrains AI Assistant, Windsurf). All support chat on selected code and inline edits. ([JetBrains][8], [Cursor][9])
+   * Optional: Repo‑aware assistant (Cody) if you have huge monorepos. ([GitHub][1])
+
+2. **Establish safety rails (org‑wide):**
+
+   * **Branch protection rules**: required reviews, status checks, no force‑push to `main`. ([GitHub Docs][10])
+   * **Danger.js** in CI to automate review chores (PR size caps, changelog, Storybook preview link). ([danger.systems][11])
+   * **A11y and visual tests in CI** (see recipes below). ([Playwright][3], [chromatic.com][12])
+   * **LLM security basics**: follow **OWASP LLM Top 10** guidance (prompt injection, data leakage, sandboxing). ([OWASP][13], [OWASP Cheat Sheet Series][14])
+
+3. **Data/privacy posture:**
+
+   * Prefer enterprise plans or API use with known **retention/training** policies (e.g., OpenAI API: 30‑day retention by default; ZDR available for eligible endpoints). Document what’s allowed to be sent to models. ([OpenAI][15])
+
+4. **Quick wins** (daily):
+
+   * “Explain this diff”, “write a unit test for this hook,” “convert this ad‑hoc CSS to tokens,” “draft PR description.” Copilot has explicit flows for PR summaries and code review. ([GitHub Docs][2])
+
+---
+
+### Phase 2 (Weeks 3–6): Team workflows + repeatable patterns
+
+**Goal:** Bake LLM help into shared processes.
+
+1. **Repository instructions for agents & assistants**
+   Add an **`AGENTS.md`** (and keep `.github/copilot-instructions.md`) so any agent knows how to build, test, lint, and what “done” means. GitHub’s coding agent now supports `AGENTS.md`. ([The GitHub Blog][16])
+
+**Example `AGENTS.md` (minimal):**
+
+```md
+# AGENTS.md
+
+## Project goals
+- Ship accessible, performant UI; zero regressive diffs on core flows.
+
+## To build & test
+- Node 20.x, pnpm 9.x
+- pnpm i && pnpm build
+- pnpm test && pnpm lint && pnpm typecheck
+- pnpm e2e:ci (headless), pnpm storybook:build
+
+## Definition of done
+- Unit + component tests added/updated
+- Playwright trace uploaded on failures
+- axe-core must report no violations on changed pages
+- Visual diffs accepted in Chromatic
+- Bundle impact < +1% for changed app routes
+
+## Do not touch
+- /legacy/payments/* (separate release), /infra/*
+
+## Commit style
+- Conventional commits; small, reviewable PRs (< 400 LOC)
+```
+
+2. **A11y + visual regression as default**
+
+   * **Playwright + axe‑core** for a11y; **Chromatic/Percy** for pixel diffs. Let the LLM explain/triage failures. ([Playwright][3], [Storybook][4], [BrowserStack][5])
+
+3. **Automated PR hygiene**
+
+   * **Dangerfile** examples: block >400 LOC PRs without “Why big?” note; require story links; reject missing tests; surface Lighthouse/Bundle size deltas. ([danger.systems][11])
+
+4. **PR assistance**
+
+   * Turn on **Copilot PR summaries** and **Copilot Code Review** (auto or on‑demand). Make it a *second* reviewer, never the only one. ([GitHub Docs][2])
+
+---
+
+### Phase 3 (Weeks 6–10): Repo‑aware assistants & code search that **really** know your code
+
+**Goal:** Answer “Where is X?” immediately and draft changes across files.
+
+1. **Index the codebase for LLM context**
+
+   * Use a tool that builds embeddings + symbols/AST, not just chunks (Sourcegraph Cody, or your own RAG using tree‑sitter + embeddings). ([GitHub][1], [npm][17])
+   * Keep a denylist (credentials, secrets, customer data) and path filters.
+
+2. **MCP (Model Context Protocol) for tools & data**
+
+   * Standardize how agents reach internal systems (docs, trackers, feature flags) via MCP rather than bespoke adapters. ([Model Context Protocol][18])
+
+---
+
+### Phase 4 (Weeks 10–14): Controlled **code agents** for safe classes of work
+
+**Goal:** Delegate narrow, auditable tasks to agents that propose PRs you review.
+
+**Good first missions**
+
+* Add missing unit tests to changed files; triage flaky tests with Playwright traces. ([Playwright][19])
+* Storybook autodocs and prop tables; dead‑link fixes in docs. ([Storybook][20])
+* A11y pass on affected pages; generate remediation PRs with axe‑core evidence. ([Deque][21])
+
+**What to use**
+
+* **GitHub Copilot coding agent** (public preview) lets you assign issues; it works in an isolated cloud environment and opens PRs when done. Use with branch protection. ([The GitHub Blog][6], [GitHub Docs][10])
+* IDE agents (Cursor Agent, Windsurf) for local, supervised tasks. ([Cursor][9], [Windsurf Docs][22])
+
+**Agent guardrails**
+
+* Human‑in‑the‑loop gates (breakpoints) for risky steps. LangGraph patterns support checkpoints and approvals. ([LangChain AI][23])
+* Least‑privilege repo scopes; limit file globs agents can edit; require green tests + visual checks before merge.
+
+---
+
+## 2) Day‑to‑day recipes (copy/paste)
+
+### A) PR automation: Dangerfile (TypeScript)
+
+```ts
+// dangerfile.ts
+import { danger, fail, warn, markdown } from "danger";
+
+const bigPR = danger.github.pr.additions + danger.github.pr.deletions > 400;
+if (bigPR) warn("Large diff (>400 LOC). Explain why in the PR body.");
+
+const hasTests = danger.git.modified_files.some(f => /(__tests__|\.spec|\.test)\./.test(f))
+  || danger.git.created_files.some(f => /(__tests__|\.spec|\.test)\./.test(f));
+if (!hasTests) fail("No tests changed/added.");
+
+if (!/Storybook|stories|Chromatic/.test(danger.github.pr.body)) {
+  warn("Add a Storybook/Chromatic reference for UI changes.");
+}
+
+// Gate on CI artifacts
+markdown("Ensure Playwright traces are uploaded for any failing specs.");
+```
+
+(Automates rote review rules so humans focus on logic.) ([danger.systems][11])
+
+### B) A11y in Playwright (CI‑friendly)
+
+```ts
+// tests/a11y.homepage.spec.ts
+import { test, expect } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+
+test("homepage has no detectable a11y issues", async ({ page }) => {
+  await page.goto(process.env.APP_URL!);
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations).toEqual([]);
+});
+```
+
+([Playwright][3])
+
+### C) Visual testing options
+
+* **Chromatic**: integrate with Storybook for cross‑browser snapshots and PR checks. ([Storybook][4])
+* **Percy**: CI integration with GitHub Actions; great for app routes and flows. ([BrowserStack][5])
+
+### D) Codemods powered by the LLM (you review)
+
+* Ask the LLM to **draft** a `jscodeshift` or `ts-morph` transform, run locally, review the diff, and iterate. Use for prop renames, API migrations, or design‑token rollouts. ([GitHub][24], [ts-morph.com][25])
+
+---
+
+## 3) When you build your **own** agent flows
+
+If you need custom orchestration (multi‑step plans, approvals, tool use):
+
+* **Coordinator pattern** with LangGraph: a supervisor routes tasks to specialists (code searcher, test writer, doc updater), with persistence and human‑in‑the‑loop breakpoints. ([LangChain AI][26])
+* **MCP for tools**: expose internal systems (task tracker, design tokens service, feature flags) through the Model Context Protocol so any agent can use them consistently. ([Model Context Protocol][18])
+* **Observability & evals**: trace every step and run regression evals on a **golden set** of repo tasks. Tools: Arize Phoenix, LangSmith. ([Phoenix][27], [LangSmith Docs][28])
+
+**Minimum safety spec for homegrown agents**
+
+* Hard timeouts, max file edits per run, change size caps.
+* Sandbox execution (ephemeral containers), no production secrets.
+* Create PRs only; **never** push to protected branches. ([GitHub Docs][10])
+
+---
+
+## 4) Picking tools (shortlist by job)
+
+| Job                                   | Good options                                                                        |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| Inline suggestions, chat, quick edits | Copilot / Cursor / JetBrains AI Assistant / Windsurf. ([JetBrains][8], [Cursor][9]) |
+| Repo‑aware Q\&A, multi‑file edits     | Sourcegraph Cody in IDE/web. ([GitHub][1])                                          |
+| Autonomous “take a ticket → PR”       | GitHub **Copilot coding agent** with `AGENTS.md`. ([The GitHub Blog][6])            |
+| Visual regression                     | Chromatic (with Storybook) / Percy. ([Storybook][4], [BrowserStack][5])             |
+| A11y checks                           | axe‑core + Playwright. ([Playwright][3])                                            |
+| Observability/evals                   | Arize Phoenix, LangSmith. ([Phoenix][27], [LangSmith Docs][28])                     |
+
+> These represent common, well‑documented choices in 2024–25. Use what your org can approve and support.
+
+---
+
+## 5) What to give the agent (and humans) as **context**
+
+* **Structure & rules:** the `AGENTS.md` shown above. GitHub explicitly supports it for the Copilot agent. ([The GitHub Blog][16])
+* **Playbooks:** “How to run Storybook locally,” “How to add a design token,” “When to use Suspense,” “How to mock payments in E2E.”
+* **Definition of Done checklists:** tests, a11y, performance, visual diffs, docs.
+* **Codebase map:** high‑level readme with core packages, app routes, and ownership. LLMs answer better when you provide a skeleton.
+
+---
+
+## 6) Evaluation & ROI (keep this lightweight)
+
+Track **before vs. after** on:
+
+* Lead time for changes, deployment frequency, change failure rate, MTTR (**DORA**). ([Dora][29])
+* Developer‑reported satisfaction & flow (**SPACE** framework). ([Microsoft][30])
+
+Add **agent‑specific** metrics:
+
+* % agent PRs merged without rework, average review time, test pass rate on first CI run, a11y/visual defects caught pre‑merge.
+
+---
+
+## 7) Security & compliance checklist (copy/paste)
+
+* **Policies**: adopt OWASP LLM Top‑10 mitigations (prompt injection, data exfiltration, output handling, agent sandboxing). ([OWASP][13])
+* **Data**: prefer enterprise/API plans with clear retention; document approved inputs (no secrets, PII). ([OpenAI][15])
+* **Controls**: branch protection; required checks for tests, a11y, visual diffs; required reviews for agent PRs. ([GitHub Docs][10])
+
+---
+
+## 8) High‑impact front‑end use cases to try next
+
+* **Design‑token migration** (e.g., rename tokens, move to CSS variables): draft codemods with LLM; run across repo; visual test to validate. ([GitHub][24])
+* **Accessibility hardening**: automate axe scans and have the agent propose focused PRs with explanations. ([Deque][21])
+* **E2E stability**: let the agent regenerate flaky selectors and attach Playwright traces for review. ([Playwright][19])
+* **PR grooming at scale**: have Copilot auto‑summarize PRs and run **Copilot Code Review** to flag obvious pitfalls before humans dig in. ([GitHub Docs][2])
+
+---
+
+## 9) Prompts that actually work (steal these)
+
+* **“Write tests from a bug”:**
+  *“Here’s the bug description and failing user steps. Create a failing unit test first for `usePrice()`, then propose a minimal fix. Respect our `jest.setup.ts` and `@testing-library` patterns.”*
+
+* **“Codemod safely”:**
+  *“Draft a `jscodeshift` codemod to replace `<Button kind='primary'>` with `<Button variant='primary'>`. Include idempotence and a `--dry` mode. Show sample input/output.”* ([GitHub][24])
+
+* **“A11y pass on changed route”:**
+  *“Given this diff, list likely WCAG violations and produce axe‑core Playwright tests for the route. Include ARIA role/name checks and color contrast.”* ([Playwright][3])
+
+* **“Visual guardrails”:**
+  *“Generate Chromatic stories for these new states. Ensure deterministic props and stable ids so snapshots are consistent.”* ([Storybook][4])
+
+---
+
+## 10) Common pitfalls & how to avoid them
+
+* **Agents overreach** (massive diffs, risky directories) → hard caps via Danger/branch protection; require human approval; narrow file globs. ([GitHub Docs][10])
+* **“Hallucinated” APIs** → ground the agent with `AGENTS.md` and repo search; prefer repository‑aware assistants. ([GitHub][1])
+* **Flaky tests from auto‑generated selectors** → enforce data‑testids and regenerate via agent; inspect Playwright traces. ([Playwright][19])
+* **Security/regulatory concerns** → stick to enterprise or API with retention controls; redact secrets. ([OpenAI][15])
+
+---
+
+### CI snippets you can drop in next:
+
+**Chromatic (Storybook)**
+
+```yaml
+# .github/workflows/chromatic.yml
+name: Chromatic
+on: [pull_request]
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+      - run: pnpm i
+      - run: pnpm build-storybook
+      - run: npx chromatic --project-token=$CHROMATIC_PROJECT_TOKEN
+```
+
+([Storybook][4])
+
+**Percy (visual diffs for app routes)**
+
+```yaml
+# .github/workflows/percy.yml
+name: Percy
+on: [pull_request]
+jobs:
+  percy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+      - run: pnpm i && pnpm build
+      - run: PERCY_TOKEN=$PERCY_TOKEN pnpm percy:ci
+```
+
+([BrowserStack][5])
+
+---
+
+## Final advice
+
+1. **Start with humans in the loop.** Treat agents like junior devs: give crisp tickets, tight scopes, and strong tests.
+2. **Codify your definition of done.** `AGENTS.md` (plus branch protections) is the difference between help and havoc. ([The GitHub Blog][16], [GitHub Docs][10])
+3. **Measure outcomes, not vibes.** Track DORA/SPACE and agent‑specific metrics to justify where you double down. ([Dora][29], [Microsoft][30])
+
+If you want, tell me your stack (React/Next version, test runner, Storybook yes/no, CI) and I’ll tailor the `AGENTS.md`, CI jobs, and a first set of agent‑friendly tickets for your repo.
+
+---
+
+**Recent updates you may want to skim:**
+
+[1]: https://github.com/augmentedcode/augment-aider?utm_source=chatgpt.com "GitHub - augmentedcode/augment-aider: AI pair programming tool with ..."
+[2]: https://docs.github.com/en/copilot/how-tos/use-copilot-for-common-tasks/create-a-pr-summary?utm_source=chatgpt.com "Creating a pull request summary with GitHub Copilot"
+[3]: https://playwright.dev/docs/accessibility-testing?utm_source=chatgpt.com "Accessibility testing | Playwright"
+[4]: https://storybook.js.org/docs/writing-tests/visual-testing?utm_source=chatgpt.com "Visual tests - Storybook docs"
+[5]: https://www.browserstack.com/docs/percy/ci-cd/github-actions?utm_source=chatgpt.com "Integrate Percy with GitHub Actions - BrowserStack Docs"
+[6]: https://github.blog/changelog/2025-05-19-github-copilot-coding-agent-in-public-preview/ "GitHub Copilot coding agent in public preview - GitHub Changelog"
+[7]: https://www.swebench.com/?utm_source=chatgpt.com "SWE-bench Leaderboards"
+[8]: https://www.jetbrains.com/help/ai-assistant/code-generation.html?utm_source=chatgpt.com "In-editor code generation | AI Assistant Documentation - JetBrains"
+[9]: https://docs.cursor.com/agent/overview?utm_source=chatgpt.com "Cursor – Overview"
+[10]: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/managing-a-branch-protection-rule?utm_source=chatgpt.com "Managing a branch protection rule - GitHub Docs"
+[11]: https://danger.systems/js/?utm_source=chatgpt.com "Danger JS"
+[12]: https://www.chromatic.com/docs/visual/?utm_source=chatgpt.com "Visual tests • Chromatic docs"
+[13]: https://owasp.org/www-project-top-10-for-large-language-model-applications/?utm_source=chatgpt.com "OWASP Top 10 for Large Language Model Applications"
+[14]: https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html?utm_source=chatgpt.com "LLM Prompt Injection Prevention - OWASP Cheat Sheet Series"
+[15]: https://openai.com/enterprise-privacy/?utm_source=chatgpt.com "Enterprise privacy at OpenAI"
+[16]: https://github.blog/changelog/2025-08-28-copilot-coding-agent-now-supports-agents-md-custom-instructions "Copilot coding agent now supports AGENTS.md custom instructions - GitHub Changelog"
+[17]: https://www.npmjs.com/package/tree-sitter-typescript?utm_source=chatgpt.com "tree-sitter-typescript - npm"
+[18]: https://modelcontextprotocol.io/introduction?utm_source=chatgpt.com "Introduction - Model Context Protocol"
+[19]: https://playwright.dev/docs/trace-viewer?utm_source=chatgpt.com "Trace viewer | Playwright"
+[20]: https://storybook.js.org/docs/writing-docs/autodocs?utm_source=chatgpt.com "Automatic documentation and Storybook | Storybook docs"
+[21]: https://www.deque.com/axe/core-documentation/api-documentation/?utm_source=chatgpt.com "Axe API Documentation | Deque Systems"
+[22]: https://docs.windsurf.com/getstarted/overview?utm_source=chatgpt.com "Welcome to Windsurf - Windsurf Docs"
+[23]: https://langchain-ai.lang.chat/langgraphjs/concepts/v0-human-in-the-loop/?utm_source=chatgpt.com "Human-in-the-loop"
+[24]: https://github.com/facebook/jscodeshift/blob/main/README.md?utm_source=chatgpt.com "jscodeshift/README.md at main · facebook/jscodeshift · GitHub"
+[25]: https://ts-morph.com/?utm_source=chatgpt.com "ts-morph - Documentation"
+[26]: https://langchain-ai.lang.chat/langgraph/tutorials/multi_agent/agent_supervisor/?utm_source=chatgpt.com "Multi-agent supervisor"
+[27]: https://phoenix.arize.com/?utm_source=chatgpt.com "Home - Phoenix"
+[28]: https://docs.smith.lang.chat/evaluation?utm_source=chatgpt.com "Evaluation Quick Start | ️ ️ LangSmith - docs.smith.lang.chat"
+[29]: https://dora.dev/guides/dora-metrics-four-keys/?utm_source=chatgpt.com "DORA | DORA’s software delivery metrics: the four keys"
+[30]: https://www.microsoft.com/en-us/research/publication/the-space-of-developer-productivity-theres-more-to-it-than-you-think/?utm_source=chatgpt.com "The SPACE of Developer Productivity: There’s more to it than you think"
