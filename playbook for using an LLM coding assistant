@@ -1,0 +1,477 @@
+Below is a practical, opinionated playbook for using an LLM coding assistant (Copilot, Cursor, etc.) to accelerate **frontend** work in a React + TypeScript app that talks to a **C#/.NET backend on Azure**. It’s structured so you can copy pieces straight into your tool’s “chat” or “instructions” panel and start getting leverage today.
+
+---
+
+## 0) Philosophy—what LLMs are great at (and what to keep human)
+
+**Great for**
+
+* Scaffolding components, hooks, tests, and docs that follow your conventions.
+* Repetitive edits across many files (prop renames, hook migrations, API signature changes).
+* Converting backend DTOs/OpenAPI → TypeScript types + typed clients.
+* Writing boilerplate for MSAL auth, React Query, routing, forms, and telemetry.
+* Drafting PR descriptions, changelogs, Storybook stories, and accessibility tests.
+
+**Keep human**
+
+* UX decisions, design trade‑offs, performance budgets, security posture.
+* Reviewing diff quality, dependency choices, and public API shapes.
+
+---
+
+## 1) Make your repo “LLM‑friendly”
+
+A model can only be as good as the **context** you feed it. Do these once and reap benefits every day.
+
+### 1.1 Project brief (pinned for the agent)
+
+Create `docs/llm-brief.md` and paste this (edit to match your stack):
+
+```md
+# LLM Project Brief (Frontend)
+
+- Framework: React 18 + TypeScript. Build: Vite.
+- Routing: React Router.
+- Data: TanStack Query for server-state; keep local UI state inside components.
+- Forms: React Hook Form + Zod for validation.
+- Styling: (e.g., CSS Modules or Tailwind—pick one and state rules).
+- API: C#/.NET backend with OpenAPI (Swagger). Use generated TS types from `src/api/schema.ts`.
+- Auth: Azure AD (MSAL). Tokens via `getAccessToken()` in `src/auth/msal.ts`.
+- HTTP: Axios instance in `src/api/http.ts` (adds bearer token).
+- Telemetry: Azure Application Insights via `src/telemetry/appInsights.ts`.
+- Testing: Vitest + React Testing Library; Playwright for E2E.
+- Conventions: Use functional components, hooks, exhaustive deps, and accessibility first.
+- File layout:
+  - `src/pages/*` route-level components (lazy).
+  - `src/components/*` reusable components with stories + tests.
+  - `src/features/*` per-domain slice (UI + hooks + queries).
+  - `src/api/*` types + clients.
+  - `src/auth/*` auth glue; no business logic.
+  - `src/telemetry/*` app insights integration.
+```
+
+> In Copilot/Cursor, reference this brief at the start of tasks: “Use the conventions from `docs/llm-brief.md`.”
+
+### 1.2 Surface the right artifacts
+
+* **OpenAPI spec** from .NET (Swashbuckle): check it into the repo (e.g., `openapi.json`) or expose a dev URL.
+* **Example components**: small, well‑tested components that demonstrate your style (naming, props, tests).
+* **Decision docs** (`docs/adr/*`): why you picked certain libs. It stops the agent from suggesting conflicting patterns.
+
+### 1.3 Minimal tooling that helps the agent help you
+
+* **TypeScript strict**: `"strict": true`, `"noUncheckedIndexedAccess": true`.
+* **ESLint + Prettier**: enforce consistency so generated code matches your style automatically.
+* **Test harness ready**: `setupTests.ts` with RTL helpers; the agent will write better tests if this exists.
+
+---
+
+## 2) Prompt patterns that reliably produce good code
+
+Use these as templates in Copilot/Cursor chat. Always include **context, constraints, acceptance criteria**, and where to **write** the code.
+
+### 2.1 Feature implementation (“scaffold + iterate”)
+
+```
+Role: You are a senior React + TS engineer on this repo. Follow our conventions in docs/llm-brief.md.
+
+Task: Build a lazy-loaded route /users that lists users from GET /api/users.
+Constraints:
+- Use React Router lazy route.
+- Data via TanStack Query on top of our Axios client (src/api/http.ts).
+- Type the response using components['schemas']['UserDto'] from src/api/schema.ts.
+- Add loading/skeleton and empty-state.
+- Add basic Vitest + RTL test.
+Deliverables:
+- src/features/users/UsersPage.tsx
+- src/features/users/useUsersQuery.ts
+- src/features/users/__tests__/UsersPage.test.tsx
+```
+
+### 2.2 Refactor across files
+
+```
+Refactor: Rename prop `onSelect` -> `onChange` in src/components/Select/* and all usages.
+Constraints:
+- Update stories and tests.
+- Keep behavior identical; add deprecation JSDoc on `onSelect` shim until all callers updated.
+Output: A git-style diff across all impacted files.
+```
+
+### 2.3 Bug fix with reproduction
+
+```
+Here is a failing test that reproduces the bug (paste test). 
+Fix the implementation in src/features/profile/ProfileForm.tsx so the test passes.
+Explain briefly what changed and why.
+```
+
+### 2.4 Review mode (use often)
+
+```
+Review the diff below (paste). 
+- Call out risky changes, missing tests, and accessibility issues.
+- Suggest 3 concrete improvements with code snippets.
+```
+
+---
+
+## 3) Core frontend building blocks (with code you can reuse)
+
+> These are solid, idiomatic starting points. Ask the agent to adapt them to your project structure.
+
+### 3.1 MSAL (Azure AD) integration
+
+**`src/auth/msal.ts`**
+
+```ts
+import { PublicClientApplication, AccountInfo } from '@azure/msal-browser';
+
+export const msal = new PublicClientApplication({
+  auth: {
+    clientId: import.meta.env.VITE_AAD_CLIENT_ID!,
+    authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AAD_TENANT_ID}`,
+    redirectUri: '/',
+  },
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false },
+});
+
+export async function getAccessToken(scopes = ['api://YOUR-APP-ID/Access.Api']): Promise<string | null> {
+  const accounts = msal.getAllAccounts();
+  if (accounts.length === 0) return null;
+  const account: AccountInfo = accounts[0];
+  const result = await msal.acquireTokenSilent({ scopes, account }).catch(async () => {
+    return msal.acquireTokenPopup({ scopes, account });
+  });
+  return result?.accessToken ?? null;
+}
+```
+
+**`src/main.tsx`**
+
+```tsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { MsalProvider } from '@azure/msal-react';
+import { msal } from './auth/msal';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { RouterProvider } from 'react-router-dom';
+import { router } from './router';
+
+const qc = new QueryClient();
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <MsalProvider instance={msal}>
+      <QueryClientProvider client={qc}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </MsalProvider>
+  </React.StrictMode>
+);
+```
+
+### 3.2 Axios with bearer token + React Query
+
+**`src/api/http.ts`**
+
+```ts
+import axios from 'axios';
+import { getAccessToken } from '../auth/msal';
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL, // e.g. https://localhost:5001
+});
+
+api.interceptors.request.use(async (config) => {
+  const token = await getAccessToken();
+  if (token) {
+    config.headers = { ...(config.headers ?? {}), Authorization: `Bearer ${token}` };
+  }
+  return config;
+});
+```
+
+**Generate types once from .NET OpenAPI** (run in your repo):
+
+```bash
+# From dev Swagger URL or a checked-in openapi.json
+npx openapi-typescript http://localhost:5001/swagger/v1/swagger.json -o src/api/schema.ts
+```
+
+**`src/features/users/useUsersQuery.ts`**
+
+```ts
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../api/http';
+import type { components } from '../../api/schema';
+
+export type UserDto = components['schemas']['UserDto'];
+
+export function useUsersQuery() {
+  return useQuery({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const { data } = await api.get<UserDto[]>('/api/users');
+      return data;
+    },
+  });
+}
+```
+
+**`src/features/users/UsersPage.tsx`**
+
+```tsx
+import { Suspense } from 'react';
+import { useUsersQuery } from './useUsersQuery';
+
+export default function UsersPage() {
+  const { data, isLoading } = useUsersQuery();
+  if (isLoading) return <div aria-busy="true">Loading users…</div>;
+  if (!data?.length) return <div>No users yet.</div>;
+
+  return (
+    <ul aria-label="users">
+      {data.map(u => (
+        <li key={u.id}>{u.displayName}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### 3.3 Forms with React Hook Form + Zod
+
+**`src/features/profile/ProfileForm.tsx`**
+
+```tsx
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { api } from '../../api/http';
+
+const ProfileSchema = z.object({
+  displayName: z.string().min(1),
+  email: z.string().email(),
+});
+type ProfileInput = z.infer<typeof ProfileSchema>;
+
+export function ProfileForm({ initial }: { initial: ProfileInput }) {
+  const { register, handleSubmit, formState: { errors, isSubmitting } } =
+    useForm<ProfileInput>({ resolver: zodResolver(ProfileSchema), defaultValues: initial });
+
+  return (
+    <form
+      onSubmit={handleSubmit(async (values) => {
+        await api.put('/api/me', values);
+        // toast success, invalidate queries, etc.
+      })}
+      aria-busy={isSubmitting}
+    >
+      <label>
+        Name
+        <input {...register('displayName')} />
+        {errors.displayName && <span role="alert">{errors.displayName.message}</span>}
+      </label>
+
+      <label>
+        Email
+        <input {...register('email')} />
+        {errors.email && <span role="alert">{errors.email.message}</span>}
+      </label>
+
+      <button type="submit" disabled={isSubmitting}>Save</button>
+    </form>
+  );
+}
+```
+
+### 3.4 Azure Blob upload via SAS
+
+**`src/features/files/uploadToBlob.ts`**
+
+```ts
+import { BlockBlobClient } from '@azure/storage-blob';
+import { api } from '../../api/http';
+
+/**
+ * Requests a single-use SAS URL for the target blob from your backend,
+ * then uploads directly from the browser.
+ */
+export async function uploadFileToBlob(container: string, file: File) {
+  const { data: sasUrl } = await api.post<string>('/api/storage/sas', {
+    container,
+    blobName: file.name,
+    contentType: file.type,
+  });
+
+  const blob = new BlockBlobClient(sasUrl);
+  await blob.uploadData(file, { blobHTTPHeaders: { blobContentType: file.type } });
+}
+```
+
+### 3.5 SignalR (Azure) realtime updates
+
+**`src/realtime/signalr.ts`**
+
+```ts
+import * as signalR from '@microsoft/signalr';
+import { getAccessToken } from '../auth/msal';
+
+export async function startNotifications(onMessage: (m: unknown) => void) {
+  const token = (await getAccessToken()) ?? '';
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl(`${import.meta.env.VITE_API_BASE_URL}/hubs/notifications`, {
+      accessTokenFactory: () => token,
+    })
+    .withAutomaticReconnect()
+    .build();
+
+  connection.on('message', onMessage);
+  await connection.start();
+  return connection;
+}
+```
+
+### 3.6 Application Insights
+
+**`src/telemetry/appInsights.ts`**
+
+```ts
+import { ApplicationInsights } from '@microsoft/applicationinsights-web';
+
+export const appInsights = new ApplicationInsights({
+  config: {
+    connectionString: import.meta.env.VITE_APPINSIGHTS_CONNECTION_STRING,
+    enableAutoRouteTracking: true,
+  },
+});
+appInsights.loadAppInsights();
+
+export function trackError(error: unknown) {
+  appInsights.trackException({ exception: error as Error });
+}
+```
+
+---
+
+## 4) “Agent recipes” for common frontend tasks
+
+Copy these into your agent when you need them.
+
+### 4.1 Generate types & clients from .NET
+
+```
+We have an OpenAPI at <URL or openapi.json>. Generate/refresh TS types with openapi-typescript into src/api/schema.ts.
+Then create a small typed wrapper `src/api/users.ts` with functions:
+- listUsers(): Promise<UserDto[]>
+- getUser(id: string): Promise<UserDto>
+- createUser(input: CreateUserDto): Promise<UserDto>
+Use our axios instance and types from schema.ts.
+Add unit tests with Vitest that mock axios.
+```
+
+### 4.2 Build an accessible component
+
+```
+Create <Modal /> in src/components/Modal with:
+- aria-modal, focus trap, escape to close, portal to #modal-root.
+- Keyboard + screen reader friendly.
+- Storybook story and RTL tests.
+```
+
+### 4.3 Migrate data fetching to React Query
+
+```
+Find all components calling api.get directly. For each, extract a useXxxQuery hook,
+keyed properly, with loading/empty/error states, and add tests using @tanstack/react-query testing utils.
+Provide a single PR diff.
+```
+
+### 4.4 Performance pass
+
+```
+Profile Home route. Suggest:
+- code-splitting opportunities (React.lazy)
+- memoization (useMemo/useCallback) where props stability matters
+- virtualization for long lists
+- image optimization steps
+Provide a concrete patch with import() chunks and rationale.
+```
+
+---
+
+## 5) How to **review** AI-generated code quickly and safely
+
+* **Ask the agent to self-critique**: “List risky parts of your diff and why.”
+* **Run tests + typecheck** before trusting output. If something breaks, paste failures back to the agent.
+* **License sanity**: if it introduces a dependency, ask “Explain the license and if it’s compatible with MIT/Company policy.”
+* **Security**:
+
+  * Never paste secrets into prompts.
+  * For auth flows, ensure PKCE/OAuth best practices remain intact.
+  * For SSRF/CSRF/CORS changes, request a threat model in the PR description.
+
+---
+
+## 6) Lightweight starter checklists
+
+### 6.1 New page checklist
+
+* [ ] Lazy route added + suspense fallback
+* [ ] Data via typed `useXxxQuery`
+* [ ] Loading/empty/error states
+* [ ] A11y checks (`aria-*`, focus management)
+* [ ] Unit test + story
+* [ ] Telemetry (page view + key actions)
+
+### 6.2 PR description prompt
+
+```
+Summarize this PR for reviewers:
+- What & why
+- Risks & mitigations
+- Screenshots/GIFs
+- Test plan (unit/E2E)
+- Rollback plan
+```
+
+---
+
+## 7) Copilot/Cursor usage tips (that compound)
+
+* **Work in small batches**: ask for one component/hook at a time; apply diff; rerun tests; repeat.
+* **Keep the chat grounded**: paste the relevant file(s) or link them so the model uses **your** patterns.
+* **Name acceptance criteria** explicitly. Models optimize for what you measure.
+* **Prefer edits as diffs**: you can scan them faster and they port cleanly to PRs.
+* **Teach it your design system**: point it at `src/components/*` and “follow these props/variants”.
+* **When it suggests an external lib**, ask for “a no-dependency alternative” and trade‑offs.
+
+---
+
+## 8) Quick package install block (if you’re starting fresh)
+
+```bash
+# React + TS + Vite (if needed)
+npm create vite@latest myapp -- --template react-ts
+cd myapp
+
+# Data, forms, validation
+npm i @tanstack/react-query axios
+npm i react-hook-form zod @hookform/resolvers
+
+# Auth, realtime, storage, telemetry
+npm i @azure/msal-browser @azure/msal-react @microsoft/signalr @azure/storage-blob
+npm i @microsoft/applicationinsights-web
+
+# Testing
+npm i -D vitest @testing-library/react @testing-library/user-event jsdom
+
+# Types from OpenAPI
+npm i -D openapi-typescript
+```
+
+---
+
+## 9) If you want me to tailor this to your repo
+
+I can adapt the prompts and code to your **exact** stack (router version, styling choice, existing folders, auth scopes, API paths). If you paste (1) `docs/llm-brief.md` or your conventions, and (2) a snippet of one feature folder, I’ll produce ready-to-paste prompts and diffs aligned to your project.
