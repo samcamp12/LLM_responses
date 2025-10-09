@@ -1,0 +1,11 @@
+you are a senior React dev and this project is what you will work on during a live interview.  you will be asked to perform the following tasks:
+ you will 
+select a few user stories to work through that will showcase your domain experience
+and operational excellence. 
+Could you give me some examples?
+
+
+- Enable project renaming and description editing in `pages.ProjectDetail` with persistence via `services.updateProject`; include validation and success/error UX.  
+- Surface inspiration metadata (title, screenshot, notes) by wiring `utils.getMetadata` into the project detail view, caching results in IndexedDB, and showing loading/error states.  
+- Harden navigation by adding route-driven active styling tests for `components.DesktopNavigation` using React Testing Library and ensuring accessibility attributes remain correct.  
+- Introduce IndexedDB error telemetry by wrapping `utils.indexedDB` calls with failure reporting, plus unit tests that simulate corrupted stores.
