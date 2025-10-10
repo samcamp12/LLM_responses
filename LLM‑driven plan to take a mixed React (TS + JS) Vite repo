@@ -1,0 +1,406 @@
+Below is a practical, LLM‑driven plan to take a mixed React (TS + JS) Vite repo from “partially working” to “solid and shippable.” It’s broken into phases, with what to emphasize and where to be cautious. I’ve also included ready‑to‑use prompt templates so Copilot/ChatGPT can be effective partners instead of chaotic code printers.
+
+---
+
+## Phase 0 — Groundwork & guardrails (before you ask an LLM to code)
+
+**Repo hygiene**
+
+* **Lock Node & deps:** add `.nvmrc` (or `engines` in `package.json`) and stick to one package manager (`pnpm` or `npm`). Run `ci` installs (`--frozen-lockfile`/`ci`) to keep versions stable.
+* **Scripts that must pass:** `dev`, `build`, `preview`, `typecheck`, `lint`, `test`. If some don’t exist, add them now (LLM can scaffold).
+* **Formatting & linting:** Prettier + ESLint (TypeScript plugin), and run them in pre‑commit (husky + lint‑staged). This prevents LLM from introducing style drift.
+
+**Vite specifics to confirm**
+
+* **Env vars:** in Vite, only variables prefixed with `VITE_` are exposed to the client. If features rely on e.g. `API_URL`, rename to `VITE_API_URL` and reference via `import.meta.env.VITE_API_URL`.
+* **ESM vs CJS:** Vite expects ESM. Mixed configs or default/named export mismatches often break builds; make this a lint rule (`import/default` checks) and stick to one module style.
+
+**LLM guardrails (critical)**
+
+* **Never let the LLM change dependencies without an explicit reason.** Ask for a rationale and safer alternatives first.
+* **Ask for **unified diffs** (patches) and a short rationale.** This keeps changes auditable.
+* **Pin outputs to specific files.** “Modify only these files: … Do not touch others.”
+* **Require tests for every non‑trivial change.** Unit for logic, Playwright for page flows.
+* **Privacy:** don’t paste secrets or private tokens into prompts. If code is sensitive, consider self‑hosted models or scrub content.
+
+---
+
+## Phase 1 — Map the codebase (fast inventory)
+
+**Goal:** Build a mental model for you and the LLM.
+
+1. Generate a **file tree** (depth 3–4), `package.json`, `tsconfig.json`, `vite.config.*`, `eslintrc.*`, and the `src/` structure.
+2. Identify **pages**, **components**, and **service functions** (API layer).
+3. List **known broken features** with reproduction steps (even partial).
+
+**What to emphasize**
+
+* **Data flow:** from pages → components → services (fetch) → state.
+* **Type coverage:** which files are TS, which are JS, where `any` spreads.
+* **Routing:** `react-router` config (version, loaders/actions if using data routers).
+* **Global providers:** state library (if any), query client, error boundaries, theming.
+
+**Where to be cautious**
+
+* Mixed TS/JS often hides **runtime type mismatches**.
+* Default vs named exports (a common source of silent failures in Vite).
+* Missing `key` props, effect deps, and stale closures (causing features to “sort of” work).
+
+**LLM use**
+Feed the LLM the tree and config files first, then ask for an “architecture sketch” (see prompt pack below).
+
+---
+
+## Phase 2 — Reproduce & freeze bugs with tests
+
+**Goal:** Turn every broken behavior into a failing test before fixing.
+
+**Emphasize**
+
+* **Minimal repro:** a short path to the error (URL + interaction).
+* **Logs:** console errors, network failures, and stack traces copied into the prompt.
+* **Contract tests for service functions:** validate request shape and response parsing.
+
+**Testing stack**
+
+* **Unit:** Vitest + Testing Library (jsdom).
+* **API mocks:** MSW (mock service worker) for deterministic tests.
+* **E2E:** Playwright for page flows (login, navigation, CRUD paths).
+
+**Caution**
+
+* React 18’s StrictMode double‑invokes effects in dev. If you see oddities, validate in tests and in production build.
+* Race conditions: overlapping fetches without **AbortController** support lead to flicker and stale UI.
+
+---
+
+## Phase 3 — Stabilize the foundation
+
+### 3.1 API layer (services)
+
+* Wrap `fetch` in a tiny client that supports:
+
+  * **Base URL** from `import.meta.env.VITE_API_URL`
+  * **Timeouts + AbortController**
+  * **JSON parsing by content‑type**
+  * **Zod runtime validation** (optional but powerful)
+  * **Typed errors** with `status`/`info`.
+
+**Caution:** Don’t swallow HTTP errors. Surface `status` so pages can render empty/error states correctly.
+
+### 3.2 State & data fetching
+
+* Introduce **TanStack Query (React Query)** or SWR for server state (caching, retries, dedupe).
+* Co-locate data hooks with pages/components; centralize the query keys.
+
+**Caution:** Avoid mixing ad‑hoc `useEffect(fetch…)` with a query library. Pick one approach per request.
+
+### 3.3 Types & incremental TS migration
+
+* Turn on `allowJs` and `checkJs` so JS files get basic checks.
+* Add shared `types/` for API contracts; migrate high‑churn files first.
+* Prefer **narrow types** at boundaries (service returns), not everywhere at once.
+
+**Caution:** Avoid `any`. If needed, use `unknown` and refine at the call site.
+
+### 3.4 Error boundaries & empty states
+
+* Add a top‑level **ErrorBoundary** and **Suspense** (if using React Query/Suspense mode).
+* Standardize **error/loader/empty** UI components.
+
+---
+
+## Phase 4 — Feature fixes & enhancements (repeatable loop)
+
+For each feature:
+
+1. **Spec (1–2 paragraphs):** what the UI should do, input/output, edge cases.
+2. **Failing test first:** unit or e2e that captures the bug/feature.
+3. **Small patch via LLM:** request a unified diff limited to target files.
+4. **Self‑review via LLM:** ask for a risk list and alternative designs.
+5. **Run checks:** typecheck, lint, unit, e2e, build, preview.
+6. **PR with rationale:** include screenshots, before/after, test evidence.
+
+**Emphasize**
+
+* **Accessibility:** labels, roles, keyboard nav, color contrast.
+* **Performance:** memoization only where profiling indicates; defer heavy work; dynamic imports for rarely used routes.
+* **i18n readiness:** no hard‑coded strings in logic.
+
+**Caution**
+
+* Don’t optimize prematurely; ensure correctness and tests first.
+* Feature flags for risky enhancements (simple `VITE_FEATURE_X` toggles).
+
+---
+
+## Phase 5 — Production hardening
+
+* **CI:** typecheck, lint, test, e2e (on a minimal set), build.
+* **Env management:** `.env.example` committed; never commit real `.env`.
+* **Bundle sanity:** analyze chunks (Rollup visualizer). Split big vendor bundles if needed.
+* **Security checks:** ESLint rules for `dangerouslySetInnerHTML`, audit dependencies, no secrets in logs, tokens in `httpOnly` cookies where possible.
+
+**Caution**
+
+* Vite base path (`base` in `vite.config`) must match deployment path (e.g., GitHub Pages vs SPA hosting). Misconfig breaks asset URLs.
+
+---
+
+## Common React/Vite failure modes to check early
+
+* **Effects & state**
+
+  * Missing/extra deps -> infinite loops or stale UI.
+  * Updating state on unmounted component -> use AbortController or guard.
+  * Unstable `key` props causing remounts and lost input state.
+
+* **Routing**
+
+  * Mismatched route params (e.g., `:id` vs `productId`).
+  * Relative vs absolute links with nested routers.
+
+* **Data**
+
+  * UI assumes data shape not guaranteed by backend (fix with schemas + safe rendering).
+  * CORS in dev (configure proxy in `vite.config.server.proxy`).
+
+* **Build**
+
+  * Mixed default/named exports; case‑sensitive file paths (macOS vs CI).
+  * Env vars missing `VITE_` prefix (undefined at runtime).
+
+---
+
+## “Do this with the LLM” — concrete task recipes
+
+### A. Codebase summary (first pass)
+
+**Prompt**
+
+> You are reviewing a React + TypeScript + JavaScript repo built with Vite. Here is the file tree (depth 3) and the contents of `package.json`, `tsconfig.json`, and `vite.config.*`.
+>
+> 1. Summarize the architecture (pages, components, services, routing).
+> 2. List likely risk areas given mixed TS/JS.
+> 3. Propose a 5–7 step plan to stabilize build/test and fix broken features.
+>    Only reason from files I provide; ask for specific files if you need them.
+
+### B. Turn a bug report into a failing test
+
+**Prompt**
+
+> Here is a bug: [steps, expected/actual, screenshot/logs].
+> Create a minimal failing test using Vitest + Testing Library (unit) or Playwright (e2e).
+> Include imports and any MSW handlers needed. Don’t fix the code yet.
+
+### C. Safe patch with rationale
+
+**Prompt**
+
+> Based on this failing test and these files: [exact file contents], propose a minimal fix as a unified diff.
+> Constraints:
+>
+> * Only modify these files: […]
+> * Do not add dependencies.
+> * Explain the root cause in 3 bullets, and the trade‑offs.
+> * Add/adjust tests to pass and to prevent regression.
+
+### D. JS → TS migration (incremental)
+
+**Prompt**
+
+> Convert this JS module to TypeScript with strict types.
+>
+> * Keep public API identical.
+> * Remove implicit `any`.
+> * If types are unknown, use `unknown` and refine at call sites.
+> * Provide diff only for this file.
+> * Add or update a test that touches the new types.
+
+### E. API client with runtime validation
+
+**Prompt**
+
+> Generate a small `request()` wrapper for `fetch` that supports: base URL from `import.meta.env.VITE_API_URL`, JSON parsing, status‑aware HttpError, timeout with AbortController, and optional Zod schema validation.
+> Provide `src/lib/http.ts` and a unit test in `src/lib/http.test.ts`. No external deps except zod.
+
+### F. Introduce React Query for a page
+
+**Prompt**
+
+> Replace this `useEffect` + `useState` fetch logic with React Query.
+>
+> * Show the modified component diff only.
+> * Use a stable query key, error/loading/empty states, and optimistic refetch on create/update.
+> * Explain when to use `select` vs `enabled`.
+
+### G. Accessibility pass
+
+**Prompt**
+
+> Audit this component for a11y issues.
+>
+> * Ensure proper roles, label connections, keyboard nav, and focus management.
+> * Return a diff and a bullet list of improvements.
+
+### H. Performance pass (targeted)
+
+**Prompt**
+
+> Using this component and its props, identify unnecessary re‑renders.
+>
+> * If needed, apply `useMemo`/`useCallback` and explain why.
+> * If not needed, say so and avoid premature optimization.
+
+### I. Router correctness
+
+**Prompt**
+
+> Given `AppRoutes.tsx` and these page files, verify param names, 404 behavior, and nested routes.
+>
+> * Fix broken links and param mismatches.
+> * Add a test that navigates to each route and asserts the heading or landmark role.
+
+### J. PR reviewer mode
+
+**Prompt**
+
+> Here is a diff of my PR.
+>
+> * List correctness, security, and accessibility risks.
+> * Call out risky patterns (e.g., `dangerouslySetInnerHTML`, missing error handling).
+> * Suggest concrete changes with code snippets.
+
+---
+
+## Optional scaffolding snippets you can drop in
+
+### Error boundary component
+
+```tsx
+// src/app/components/ErrorBoundary.tsx
+import { Component, ReactNode } from 'react';
+
+type Props = { children: ReactNode; fallback?: ReactNode };
+type State = { hasError: boolean; error?: Error };
+
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false };
+  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: unknown) { console.error('ErrorBoundary', error, info); }
+  render() {
+    if (this.state.hasError) return this.props.fallback ?? <div role="alert">Something went wrong.</div>;
+    return this.props.children;
+  }
+}
+```
+
+### React Query provider
+
+```tsx
+// src/app/providers/ReactQueryProvider.tsx
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactNode, useState } from 'react';
+
+export function ReactQueryProvider({ children }: { children: ReactNode }) {
+  const [client] = useState(() =>
+    new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 60_000 } } })
+  );
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+```
+
+### Simple typed HTTP wrapper with timeouts
+
+```ts
+// src/lib/http.ts
+import { z, ZodTypeAny } from 'zod';
+
+export class HttpError extends Error {
+  status: number;
+  info?: unknown;
+  constructor(message: string, status: number, info?: unknown) {
+    super(message); this.status = status; this.info = info;
+  }
+}
+
+const BASE = import.meta.env.VITE_API_URL ?? '';
+
+export async function request<T extends ZodTypeAny>(
+  path: string,
+  init: RequestInit & { schema?: T; timeoutMs?: number } = {}
+): Promise<z.infer<T> | unknown> {
+  const { schema, timeoutMs = 15000, ...opts } = init;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(BASE + path, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+      signal: opts.signal ?? controller.signal,
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new HttpError(res.statusText, res.status, data);
+    return schema ? schema.parse(data) : data;
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw new HttpError('Request timed out', 408);
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+```
+
+---
+
+## “Emphasize these” (the high‑leverage bits)
+
+* **Tests as contracts** before fixes—LLMs excel at generating code; your tests keep them honest.
+* **Typed boundaries** at the service layer—catch data issues early with Zod/types.
+* **Consistent data fetching** (React Query or SWR)—reduce bespoke fetching bugs.
+* **Standardized error/loading/empty UI**—keeps pages consistent and removes edge‑case flakiness.
+* **Prompt discipline**—file‑scoped diffs, clear constraints, and rationale requests.
+
+---
+
+## “Be cautious here” (where LLMs and Vite/React often go wrong)
+
+* **Changing configs casually** (`vite.config`, `tsconfig`, `eslintrc`): one small flag can break your build or slow dev server.
+* **Dependency creep:** new libraries for small problems → larger bundle, more risk.
+* **Silent security issues:** `dangerouslySetInnerHTML`, logging secrets, storing tokens in `localStorage` when you can use httpOnly cookies.
+* **Effect dependency mistakes:** over‑memoizing or under‑specifying deps.
+* **Env var leaks:** only `VITE_*` are client‑side; never expose secrets.
+
+---
+
+## Lightweight checklists
+
+**PR checklist**
+
+* [ ] Rationale + screenshots
+* [ ] Tests cover happy and error paths
+* [ ] No new deps (or rationale provided)
+* [ ] Typecheck/lint/test/e2e/build pass locally
+* [ ] Accessibility checked (labels, roles, keyboard)
+* [ ] No secrets in code or logs
+
+**Bug triage checklist**
+
+* [ ] Repro steps + URL
+* [ ] Console & network logs captured
+* [ ] Minimal failing test added
+* [ ] Root cause summarized in 3 bullets
+* [ ] Fix is smallest possible diff
+
+---
+
+### If you want, I can take the next step right now
+
+Share:
+
+* Your **file tree** (depth ~3–4),
+* `package.json`, `tsconfig.json`, `vite.config.*`,
+* One **broken feature** with repro steps and the relevant files.
+
+I’ll turn that into a failing test and a contained patch plan (diff + tests + rationale) using the workflow above.
