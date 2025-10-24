@@ -1,0 +1,264 @@
+Below is a concise, copy‑pasteable playbook you can keep in your repo (e.g., `docs/prompting.md`). It’s optimized for React + TypeScript work.
+
+## 1) Quickstart Formula (use this in any prompt)
+
+**ROLE → GOAL → CONTEXT → CONSTRAINTS → OUTPUT → CHECKS**
+
+* **ROLE:** Who the assistant/agent should be.
+* **GOAL:** Single, measurable outcome.
+* **CONTEXT:** Files, snippets, error, environment, what you tried.
+* **CONSTRAINTS:** Libraries, style rules, performance/a11y targets, file boundaries.
+* **OUTPUT:** Exact shape (diff, code block per file, checklist, short rationale).
+* **CHECKS:** Tests to pass, acceptance criteria, edge cases.
+
+> **One‑liner version:**
+> *“Act as a Senior React+TS engineer. Goal: fix X. Context: [code/error]. Constraints: keep public API, pass tests, adhere to ESLint/Prettier. Output: a unified diff + brief rationale. Checks: list edge cases and how covered.”*
+
+---
+
+## 2) One‑Time “Project Card” (paste at top of a new thread)
+
+Fill this out once and reuse it. Trim anything irrelevant.
+
+```text
+PROJECT
+- App type: <SPA | Next.js SSR/ISR | Electron | RN Web>
+- Core: React <version>, TypeScript <version>, Node <version>
+- State/data: <Zustand/Redux/TanStack Query/RTK Query/...>
+- Routing: <React Router v6 | Next.js App Router>
+- Styling: <CSS Modules | Tailwind | styled-components | MUI | Chakra>
+- Build: <Vite | Next.js | Webpack>, target browsers: <browserslist>
+- Tests: <Vitest/Jest>, E2E: <Playwright/Cypress>, UI: <React Testing Library>
+- Lint/format: <ESLint config>, <Prettier config>
+- Design System: <Storybook?> <tokens?>
+- Perf budgets: <LCP < 2.5s on 4G, bundle < 200KB gz>, critical path>
+- a11y: <WCAG 2.1 AA>, i18n: <library?>
+- Repo rules: Conventional Commits, required checks: <list>
+- Don’t touch: <files/dirs>, Secrets in .env (never paste).
+```
+
+---
+
+## 3) What to include (by problem type)
+
+**Bugs**
+
+* Exact error text and stack (verbatim), screenshot if UI.
+* Minimal repro (smallest component or hook reproducing the issue).
+* Steps to reproduce + what you already tried.
+
+**TypeScript**
+
+* The precise types/interfaces involved, `tsconfig.json` flags that matter (`strict`, `noUncheckedIndexedAccess`, etc.).
+* Expected vs. actual types; show failing line annotations.
+
+**React performance**
+
+* What’s slow (interaction/LCP/TTI), how measured (React Profiler numbers, timings).
+* Where state lives, memoization strategy, and component tree slice.
+
+**Build/Bundle**
+
+* Current chunk sizes, dynamic import boundaries, relevant config (Vite/Next/webpack).
+* Third‑party libs involved and why they must remain.
+
+**Accessibility**
+
+* Desired UX (keyboard flow, roles, announcements).
+* Screenshots/DOM snapshot + current ARIA attributes.
+
+**Tests**
+
+* Test intent (“what behavior proves this works”), current failures, any flakiness notes.
+
+---
+
+## 4) Output Contracts to request (pick 1–2 max)
+
+* **Unified diff only:** “Return a single unified diff touching only files I list.”
+* **File‑per‑block:** “For each file, one fenced code block with `title="path"`.”
+* **Rationale cap:** “Explain decisions in ≤7 bullets—trade‑offs only.”
+* **Checklists:** “End with a ‘Done when’ checklist & risks.”
+* **No drive‑by edits:** “If unsure, ask up to 3 clarifying questions before modifying unrelated code.”
+
+---
+
+## 5) Agent Task Card (use for autonomous repo changes)
+
+Paste this YAML in your Agent prompt and fill the blanks:
+
+```yaml
+task: "<imperative objective—ship a small, testable change>"
+scope:
+  include: ["src/components/Button.tsx", "src/hooks/useX.ts"]
+  exclude: ["src/legacy/**", "scripts/release/**"]
+constraints:
+  - Keep public APIs backward compatible
+  - Preserve existing tests; add new tests for new paths
+  - Follow ESLint/Prettier; file headers unchanged
+  - Don’t introduce new deps without approval
+acceptance_criteria:
+  - All unit/integration tests pass locally (command: "pnpm test")
+  - Lint & typecheck clean ("pnpm lint", "pnpm typecheck")
+  - Bundle delta < +10KB gzip in main route
+  - Keyboard + screen reader flow unchanged unless specified
+io:
+  input_artifacts:
+    - short_context: "Why we need this"
+    - evidence: ["error log", "profiler screenshot", "failing test"]
+  output_artifacts:
+    - patch: "unified diff"
+    - rationale: "bulleted trade-offs"
+    - tests: "added/updated test files"
+repo:
+  branch: "feat/<slug>"
+  commit_convention: "conventional commits"
+plan:
+  require_approval: true  # Agent proposes a plan, waits for “approve” before changes
+security:
+  - Never print secrets or .env values
+  - Don’t send large code outside listed scope
+```
+
+---
+
+## 6) Reusable Prompt Templates (tailored for React + TS)
+
+### A) Bug‑fix (component/hook)
+
+````
+ROLE: Senior React+TS engineer.
+GOAL: Diagnose and fix the bug where <symptom>.
+CONTEXT: <error text> ; files: <paths>; minimal repro:
+```tsx title="src/Example.tsx"
+// ...
+````
+
+CONSTRAINTS: Keep public API; no new deps; follow existing patterns.
+OUTPUT: Unified diff + ≤7‑bullet rationale; include tests proving the fix.
+CHECKS: List edge cases; explain why they’re covered.
+
+```
+
+### B) Implement a component from a spec
+```
+
+ROLE: Design‑system aware React engineer.
+GOAL: Build <ComponentName> with <behaviors>.
+CONTEXT: Screen/UX notes (breakpoints, focus order, ARIA), tokens, DS primitives.
+CONSTRAINTS: A11y first (WCAG 2.1 AA); SSR‑safe; no layout shift on mount.
+OUTPUT: File‑per‑block code; story in Storybook; tests (RTL).
+CHECKS: Include manual test script (tab/shift+tab, screen reader announce points).
+
+```
+
+### C) Type inference help
+```
+
+ROLE: TypeScript expert.
+GOAL: Derive a type that enforces <rule>, given these values/functions.
+CONTEXT: tsconfig flags + current types; smallest failing snippet.
+CONSTRAINTS: No `any`; prefer distributive conditional types.
+OUTPUT: Minimal type alias + explanation of why it narrows correctly.
+CHECKS: Show a tiny “should compile / should error” pair.
+
+```
+
+### D) Performance remediation
+```
+
+ROLE: React performance engineer.
+GOAL: Reduce re‑renders and TTI in <component/route>.
+CONTEXT: Profiler summary (commit times, flame chart hotspots), state location diagram.
+CONSTRAINTS: No visible UX regressions; don’t change data contract.
+OUTPUT: Diff + before/after metrics table; list memoization and cache boundaries.
+CHECKS: Explain why changes are stable under concurrent rendering.
+
+```
+
+### E) Test authoring
+```
+
+ROLE: Testing engineer (RTL + Playwright/Cypress).
+GOAL: Add tests that prove <behavior>.
+CONTEXT: Component or page code; current failing tests; flake notes.
+CONSTRAINTS: Stable selectors, avoid implementation details.
+OUTPUT: Test files + fixtures + brief rationale; commands to run.
+CHECKS: Failure message that would catch regressions.
+
+```
+
+### F) Migration/refactor (safe & scoped)
+```
+
+ROLE: Senior engineer focused on incremental refactors.
+GOAL: Migrate <X to Y> / Refactor <module> with zero behavior change.
+CONTEXT: Current file(s) + public API list; integration points.
+CONSTRAINTS: No mass renames; keep exports stable; add codemod if helpful.
+OUTPUT: Small, reviewable diff; list risk areas + quick rollback plan.
+CHECKS: Confidence checklist (types, tests, perf, a11y).
+
+```
+
+---
+
+## 7) Filled Example (short)
+> **Prompt:**  
+> ROLE: Senior React+TS engineer.  
+> GOAL: Fix “Cannot read properties of undefined (reading 'map')” when switching tabs.  
+> CONTEXT: Happens in `src/pages/Orders.tsx` after `useQuery` refetch. Minimal repro below. Error stack + component snippet included.  
+> CONSTRAINTS: No behavior change; keep API; no new deps.  
+> OUTPUT: Unified diff + ≤5 bullets rationale; add a unit test.  
+> CHECKS: Cover empty states, loading states, slow network.
+
+Why this works: it states the goal, pinpoints the file, provides a repro, and nails output + checks—so the answer you get is a focused patch plus tests.
+
+---
+
+## 8) Handy “Shortcodes” you can add to any prompt
+- **[DIFF]** return unified diff only; fail if touching other files.  
+- **[BRIEF]** limit rationale to 5–7 bullets (no verbose step‑by‑step).  
+- **[STRICT]** follow ESLint/Prettier and `tsconfig` strictly; no `// @ts-ignore`.  
+- **[A11Y]** include ARIA roles/labels and keyboard script.  
+- **[PERF]** include before/after numbers and why they’re stable.  
+- **[TEST]** include Jest/Vitest + RTL tests for new/changed logic.  
+- **[PLAN]** propose a plan first; wait for my “approve” keyword.  
+- **[SCOPE:<paths>]** only touch listed files.
+
+Example:  
+“Fix the tab crash [DIFF][BRIEF][TEST][SCOPE:src/pages/Orders.tsx,src/hooks/useOrders.ts].”
+
+---
+
+## 9) Guardrails & good hygiene
+- **Never paste secrets** (`.env`, API keys, customer data). If an agent needs them, use env vars locally.  
+- **Keep diffs small** (≤200 lines) and focused; ask the agent to split work if larger.  
+- **Prefer minimal repros**—strip unrelated code and cut props down.  
+- **Lock the output**—be explicit about file names, formats, and commit style.  
+- **Bias to existing patterns**—ask the answer to match current project conventions.  
+- **Ask for failure modes**—“list 3 ways this could break and how we mitigated them.”
+
+---
+
+### Copy‑paste Checklists
+
+**Bug prompt checklist**
+- [ ] Error text + stack (verbatim)  
+- [ ] Minimal repro snippet  
+- [ ] Steps to reproduce  
+- [ ] Files/paths involved  
+- [ ] What you tried  
+- [ ] Output format + tests requested
+
+**Feature prompt checklist**
+- [ ] UX spec + states (idle/loading/empty/error)  
+- [ ] A11y/keyboard/ARIA expectations  
+- [ ] Responsive rules/breakpoints  
+- [ ] Data contract (types)  
+- [ ] Output format (code blocks or diff)  
+- [ ] Acceptance criteria
+
+---
+
+If you want, paste your **Project Card** and a **real task** next, and I’ll show you precisely how I’d shape it into a high‑leverage prompt using this framework.
+```
