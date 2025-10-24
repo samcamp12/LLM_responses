@@ -260,5 +260,174 @@ Example:
 
 ---
 
-If you want, paste your **Project Card** and a **real task** next, and I’ll show you precisely how I’d shape it into a high‑leverage prompt using this framework.
+Below is a no‑nonsense guide tuned for a mid‑senior React/TypeScript developer. Keep it handy in your repo as `docs/prompt-rules.md`.
+
+## The 10 Rules (TL;DR)
+
+1. **State a single, testable goal.**
+   Bad: “Optimize performance.”
+   Good: “Reduce re‑renders of `OrderList` when filters change; target < 30ms commit time in React Profiler.”
+
+2. **Pin versions & environment.**
+   Include: `React 18.3`, `TypeScript 5.4`, `Vite 5`, `Node 20`, `React Router v6.28`, browser targets. (Version drift invites invented APIs.)
+
+3. **Provide a minimal, runnable slice.**
+   Share the smallest component/hook + exact error text + repro steps. Omit surrounding app noise.
+
+4. **Show types and data shapes.**
+   Paste relevant interfaces, example payloads, and the failing line. TS without types = guesswork.
+
+5. **Set constraints and acceptance criteria.**
+   “No new deps; keep public API stable; pass `pnpm test && pnpm typecheck`; a11y unchanged; diff only in `src/components/Table/*`.”
+
+6. **Specify the output format.**
+   Ask for **a unified diff**, or **one code block per file** with `title="path"`, plus **≤7 bullet rationale** and **tests**.
+
+7. **Limit scope aggressively.**
+   Name the files the model may touch. Hallucinations often appear when the scope is “the whole app.”
+
+8. **Prefer facts to adjectives.**
+   Replace “cleaner, better, nicer” with explicit metrics, APIs, keyboard flows, ARIA roles, breakpoints.
+
+9. **Allow “I don’t know.”**
+   Say: “If information is missing, list the unknowns and stop—do not invent APIs or behavior.”
+
+10. **For anything that changes over time, require sources.**
+    “If library APIs are referenced, cite official docs and include versioned links.” (Prevents made‑up methods.)
+
+---
+
+## What to Include (Precision Boosters)
+
+* **Context block (short):**
+
+  * Framework/build: Next.js (App Router?) or Vite, SSR?
+  * State/data: TanStack Query/Redux/Zustand.
+  * Styling: Tailwind, CSS Modules, MUI, etc.
+  * Tooling: ESLint config highlights (`noUncheckedIndexedAccess`, `strictNullChecks`), test runner.
+* **Exact error text** and stack **verbatim**.
+* **Minimal repro** (component/hook) and **steps to reproduce**.
+* **Relevant types** and **example data** (happy path + edge).
+* **Constraints** (no new deps, public API frozen, coding style to mimic).
+* **Acceptance criteria** (tests pass, bundle delta, perf budget, a11y flow).
+* **Output contract** (diff/files, tests, brief rationale, risks list).
+* **Scope** (allowlist paths; blacklist legacy dirs).
+* **If asking for performance**: Profiler numbers, flame hotspot, render count.
+* **If asking for a11y**: Desired focus order, roles, announcements, keyboard script.
+
+> **Paste-able header you can reuse**
+>
+> ```
+> ROLE: Senior React+TS engineer.
+> GOAL: <single measurable outcome>.
+> STACK: React <v>, TS <v>, <Vite/Next> <v>, <Router/State libs>.
+> CONTEXT: <minimal code + error + steps>.
+> CONSTRAINTS: <deps, API stability, style, file scope>.
+> OUTPUT: <diff or file-per-block> + tests + ≤7 bullets rationale.
+> CHECKS: <tests/metrics/a11y to verify>.
+> ```
+
+---
+
+## What Causes Hallucinations (Triggers to Avoid)
+
+* **Vague goals** (“improve UX”, “make faster”) with no metrics.
+* **Unpinned or ambiguous libraries** (“React Router” without version; “Next routing” without App vs Pages router).
+* **Missing code/context** (“complete this feature” but no types, no data contract, no UI states).
+* **Forcing certainty** (“don’t ask questions,” “be confident”), which incentivizes guessing.
+* **Requesting undocumented or future features** (“use the new TS 6 feature…”) or mixing frameworks incorrectly.
+* **Conflicting constraints** (e.g., “no behavior change” + “rewrite to server components”).
+* **Giant scopes** (multi‑file refactors across the app in one shot).
+* **Asking for chain‑of‑thought** or step‑by‑step internal reasoning.
+  Instead ask for a **brief rationale** and **assumptions list**—it’s enough for review without encouraging invented details.
+* **No stop condition** for agents (“keep improving the codebase”), leading to speculative edits.
+
+---
+
+## Safer Prompt Patterns (Anti‑Hallucination Guards)
+
+* **Unknowns first:** “Start with an ‘Unknowns & Assumptions’ list. If unknowns block correctness, stop and ask up to 3 questions.”
+* **Anchors:** “Only use APIs present in the provided code or official docs for React 18.3/TS 5.4. If absent, propose stubs instead of inventing imports.”
+* **Scope gate:** “Touch only: `src/components/Table.tsx`, `src/hooks/useOrders.ts`. Fail if editing outside.”
+* **Evidence‑based claims:** “When citing a library API, name the import path and show a 3–5 line usage snippet.”
+* **No placeholders:** “No `TODO`, no `any`, no pseudo‑code; provide compilable TS and tests.”
+* **Plan‑then‑apply (for agents):** “Propose a plan; wait for ‘approve’ before writing code. After changes, output diff + tests + risk list.”
+* **Deterministic style:** “Follow existing patterns and ESLint/Prettier; no opinionated restructures unless requested.”
+
+---
+
+## Examples (Bad → Good)
+
+**Bug fix**
+
+* **Bad:** “Fix tab crash.”
+* **Good:**
+
+  ```
+  ROLE: Senior React+TS engineer
+  GOAL: Fix “Cannot read properties of undefined (reading 'map')” when switching tabs.
+  STACK: React 18.3, TS 5.4, Vite 5, TanStack Query 5.51
+  CONTEXT: Repro in `src/pages/Orders.tsx` below + stack. Happens after refetch.
+  CONSTRAINTS: No new deps; public API stable; scope to Orders page.
+  OUTPUT: Unified diff + one RTL test that covers empty/loading states; ≤7 bullets rationale.
+  CHECKS: All tests pass; no extra renders (<= 2 per tab switch).
+  ```
+
+**Component implementation**
+
+* **Bad:** “Build a dropdown.”
+* **Good:**
+
+  ```
+  GOAL: Build <Select> with typeahead and keyboard support.
+  UX STATES: idle/loading/empty/error; highlight on arrow keys; Enter selects; Esc closes.
+  A11Y: role="combobox", aria-expanded, aria-activedescendant; announcements on open/close.
+  BREAKPOINTS: xs, md behaviors described here: ...
+  OUTPUT: Files: src/components/Select.tsx, Select.stories.tsx, Select.test.tsx
+  CHECKS: Playwright script steps 1–6 included; WCAG 2.1 AA passes.
+  ```
+
+**Type inference**
+
+* **Bad:** “Help with TS generics.”
+* **Good:**
+
+  ```
+  GOAL: Constrain `pluck<T, K extends keyof T>(...)` so K respects nested optional keys.
+  CONTEXT: tsconfig: strict, noUncheckedIndexedAccess; failing snippet below.
+  OUTPUT: Minimal type alias + “should compile/should error” examples.
+  ```
+
+---
+
+## Agent‑Specific Rules (when letting an agent change your repo)
+
+1. **Task size:** one PR‑sized change (≤200 lines).
+2. **Hard boundaries:** include/exclude globs; forbid config/secrets.
+3. **Approvals:** plan → your “approve” → diff + tests; no autonomous merging.
+4. **Checks in prompt:** exact commands (`pnpm typecheck`, `pnpm test`, `pnpm lint`).
+5. **Telemetry:** require a summary of edits, affected modules, and rollback steps.
+6. **Stop on uncertainty:** if doc conflicts or API not found, agent must pause and ask.
+
+**Agent task card footer to paste**
+
 ```
+Stop conditions:
+- API not present in repo or official docs → pause.
+- Tests failing unrelated areas → revert and report.
+- Bundle delta > +10KB gzip → propose alternatives.
+```
+
+---
+
+## Quick “Prompt Linter” (run this before you hit Enter)
+
+* [ ] One goal, measurable & testable
+* [ ] Versions pinned (React/TS/build/router/state libs)
+* [ ] Minimal repro + exact error text
+* [ ] Types & sample data included
+* [ ] Constraints + acceptance criteria stated
+* [ ] Output format locked (diff/files + tests + brief rationale)
+* [ ] File scope restricted
+* [ ] Invite “unknowns & assumptions” instead of guesses
+* [ ] For doc‑dependent tasks, require official‑docs citations
