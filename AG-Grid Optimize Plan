@@ -1,0 +1,208 @@
+**Rewrite for clarity:**
+We’re using React + Vite + TypeScript with AG Grid (server‑side row model). Each user has a saved “profile” (column state + filter state). On first load we: (1) fetch rows 1–20, (2) fetch the user’s default profile, (3) fetch filter options for *all* filterable columns, then (4) re‑query the grid using the profile. Because the profile can’t be applied until all filter options are loaded, the first paint is delayed 5–10 seconds. How can we optimize this—front‑end and back‑end?
+
+---
+
+## High‑impact design changes
+
+### 1) **Break the hard dependency on preloading all filter options**
+
+* **Apply the profile immediately; lazy‑load filter options only when needed.**
+  In AG Grid SSRM, the filter model can be set on the grid and used for the server request; the Set Filter’s *values* can be supplied **asynchronously** via `filterParams.values` (e.g., fetch on menu open) rather than preloading everything. ([AG Grid][1])
+* **Keep the UX correct while options load:** the column shows the “filter active” indicator and the grid data is already filtered server‑side; the Set Filter list populates a moment later. If you need to force refresh/rehydration of values for a column, use `refreshFilterValues`/`setFilterValues`. ([AG Grid][2])
+
+**React/TS example (lazy Set Filter values):**
+
+```tsx
+const columnDefs: ColDef[] = [
+  {
+    field: 'status',
+    filter: 'agSetColumnFilter',
+    filterParams: {
+      // Fetch values only when the filter is opened
+      values: (params: any) => {
+        fetch(`/api/filters?cols=status`)
+          .then(r => r.json())
+          .then((res) => params.success(res.status)) // array of strings
+          .catch(() => params.fail());
+      },
+      // Optional: refetch each time the menu opens
+      refreshValuesOnOpen: true
+    }
+  },
+  // ...
+];
+```
+
+### 2) **Bootstrap everything you need in one round trip**
+
+* Replace three sequential calls with **one “bootstrap” endpoint** that returns:
+
+  * `userProfile` (column state, filter model, sort model),
+  * `columnsMeta` (data types, high‑cardinality flags),
+  * **first page of rows already computed using the profile**, plus total row count,
+  * **filter options only for columns used in the profile** (or only for low‑cardinality columns).
+    This removes the “load rows, then profile, then filters” waterfall.
+* If you prefer GraphQL, issue a single query instead of multiple REST calls.
+* Add **ETag**/`If-None-Match` and Brotli/Gzip to keep payloads small.
+
+### 3) **Instant profile apply with local cache**
+
+* **Persist the last good profile locally** (IndexedDB/localStorage). On mount:
+
+  1. read the cached profile and **apply it immediately** to AG Grid (`api.setColumnState()`, `api.setFilterModel()`, `api.setSortModel()`),
+  2. initialize the SSRM datasource and let it fetch the first block **using that model**,
+  3. concurrently fetch the fresh server profile and reconcile if it changed.
+* AG Grid will apply the filter model even before data is set; to avoid any async delay here, **provide cell data types** (or disable inference) so applying the filter model is synchronous. ([AG Grid][1])
+  (Docs: if types are inferred and there’s no data yet, `setFilterModel()` may apply asynchronously; supplying types avoids that behavior.)
+
+### 4) **Only fetch filter options for the columns the user touches**
+
+* Build a **batch endpoint** like `/api/filters?cols=status,region,owner` that returns options for multiple columns at once (and only the ones being opened or referenced by the profile).
+* For high‑cardinality columns, don’t return the full list—support **server‑side search/prefix** and **paged options** (e.g., `?q=ac&limit=100`).
+
+### 5) **Make the server fast at computing filter options**
+
+* **Cache distinct values** per column (and per dataset version/tenant) in Redis or a materialized table. Refresh on a schedule or via CDC/DB triggers.
+* For very large datasets, expose **faceted aggregates** (e.g., Elasticsearch/OpenSearch `terms` agg) or maintain precomputed “distincts” tables with proper indexes.
+
+---
+
+## Proposed load flow (before vs. after)
+
+**Today (sequential & blocking):**
+
+1. Rows (1–20) → 2) User profile → 3) Filter options for *all* columns → 4) Re‑query rows using profile → UI renders.
+
+**Optimized (parallel & lazy):**
+
+1. **Bootstrap**: user profile + first page already filtered/sorted by profile (+ optional low‑cardinality filter options).
+2. Grid renders immediately under the profile.
+3. When a user opens a column filter, **fetch that column’s options on demand**.
+4. Preload options only for columns used by the profile in the background (non‑blocking).
+
+---
+
+## Front‑end checklist (React + Vite + TS + AG Grid)
+
+1. **State bootstrapping**
+
+   * On app start, get `/api/grid/bootstrap?gridId=MAIN`. Apply `columnState`, `filterModel`, `sortModel` first; then set the server‑side datasource.
+   * If bootstrap takes any time, **optimistically apply locally cached profile** so the first server request already respects it.
+
+2. **Server‑side datasource**
+
+   ```ts
+   const dataSource: IServerSideDatasource = {
+     getRows: async params => {
+       const req = {
+         startRow: params.request.startRow,
+         endRow: params.request.endRow,
+         filterModel: gridApi.getFilterModel(),
+         sortModel: gridApi.getSortModel(),
+       };
+       const res = await fetch('/api/grid/query', { method: 'POST', body: JSON.stringify(req) })
+                         .then(r => r.json());
+       params.success({ rowData: res.rows, rowCount: res.total });
+     }
+   };
+   gridApi.setServerSideDatasource(dataSource);
+   ```
+
+3. **Lazy filter options**
+
+   * Use `filterParams.values` as a function (as above), optionally with `refreshValuesOnOpen: true`. ([AG Grid][3])
+   * If the saved profile contains values not present in the first returned options, union them in so the UI reflects the active filter; you can update via `setFilterValues`/`refreshFilterValues`. ([AG Grid][2])
+
+4. **Make model application synchronous**
+
+   * Declare `cellDataType` or set `cellDataType=false` on `defaultColDef` so `api.setFilterModel()` doesn’t defer while inferring types. ([AG Grid][1])
+
+5. **Performance knobs in AG Grid**
+
+   * Tune SSRM `cacheBlockSize`, `maxBlocksInCache`, and debounce refreshes when setting state in quick succession.
+   * Avoid double refreshes: apply `columnState`, `filterModel`, and `sortModel` **before** setting the datasource or wrap updates in a micro‑batch (set models, then one `api.refreshServerSideStore({ purge: true })`).
+
+6. **Transport**
+
+   * Use HTTP/2 or HTTP/3; keep the number of roundtrips minimal but safe. Compress all large JSON (Brotli).
+
+---
+
+## Back‑end checklist (BFF/API & DB)
+
+1. **Bootstrap endpoint**
+
+   * Input: `gridId`, current dataset version.
+   * Output:
+
+     ```json
+     {
+       "profile": { "columnState": [...], "filterModel": {...}, "sortModel": [...] },
+       "columnsMeta": { "status": { "type": "string", "cardinality": "low" }, ... },
+       "page": { "rows": [...], "total": 123456 },
+       "filterOptions": { "status": ["Open","Closed","Pending"] } // optional
+     }
+     ```
+   * Compute rows using the profile on the server so there’s no “initial wrong query”.
+
+2. **Filters API**
+
+   * `GET /api/filters?cols=a,b,c&q=prefix&limit=200&page=1`
+   * Cache per `datasetVersion:col` key (Redis/materialized view).
+   * For searchable lists, index columns (`btree` for prefix search, `pg_trgm` for contains in Postgres).
+
+3. **Caching & invalidation**
+
+   * **ETag**/`Last-Modified` on profile and filter option payloads.
+   * **Stale‑while‑revalidate** semantics: serve cached options instantly, refresh in background.
+   * Invalidate per column when upstream data version changes (include a `datasetVersion` in every response).
+
+4. **Query planner**
+
+   * Canonicalize the `filterModel` JSON (stable key order) and cache data queries by `(model, sort, page, size)`.
+   * Prewarm caches for the user’s default profile after they save it.
+
+5. **Payload hygiene**
+
+   * Only send fields the grid needs (server‑side projection).
+   * Consider `gzip`/Brotli and, if responses are huge, `ndjson` streaming for long lists of options.
+
+---
+
+## Concrete “Phase 1 → Phase 3” plan
+
+**Phase 1 (no breaking changes)**
+
+* Stop preloading every filter’s options. Provide `filterParams.values` as an async function.
+* Cache and apply the last profile locally before the first server query.
+* Ensure `cellDataType` is provided so `setFilterModel()` is synchronous. ([AG Grid][1])
+
+**Phase 2 (API improvements)**
+
+* Introduce `/api/grid/bootstrap` that returns the profile and the first page **already filtered/sorted**.
+* Add `/api/filters` batching + search; return options only for columns referenced in the profile (others on demand).
+
+**Phase 3 (scalability)**
+
+* Precompute/refresh distincts (or use a search engine for facets).
+* Add query and options caching keyed by dataset version.
+* Prewarm caches for the user’s default profile after they save it.
+
+---
+
+## Expected results
+
+* **First paint drops from seconds to sub‑second** because the grid renders immediately using the saved profile and retrieves rows right away; filter options arrive lazily.
+* **Network traffic shrinks** by removing the “all filters” payload and collapsing roundtrips (bootstrap + on‑demand).
+* **UI feels instant**: the “filtered” badge appears immediately; menus populate on open.
+
+---
+
+### Relevant AG Grid references
+
+* Applying filter models and synchronous vs async behavior when types are inferred. ([AG Grid][1])
+* SSRM filtering and supplying Set Filter values synchronously or asynchronously via `filterParams.values`. ([AG Grid][3])
+* Set Filter API for programmatically updating values (`setFilterValues`, `refreshFilterValues`). ([AG Grid][2])
+* Grid state persistence (`api.getState()` / state events) you can use to cache per user. ([AG Grid][4])
+
