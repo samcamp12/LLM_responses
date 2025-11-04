@@ -1,0 +1,339 @@
+**Rewrite (clearer U.S. English):**
+I’m a Front‑end SDE II working on a React/Vite/TypeScript project. Please give me a list of sample prompts I can use with LLM code agents to bug‑fix, refactor, or upgrade code.
+
+---
+
+Below are **copy‑paste prompt templates** tuned for a React + Vite + TypeScript stack. They’re organized by task and include optional “toggles” you can keep or remove.
+
+---
+
+## 0) Reusable project context block (paste once per chat)
+
+```
+You are a senior front-end engineer assisting on a React + Vite + TypeScript codebase.
+
+Constraints & conventions:
+- Package manager: <npm|pnpm|yarn>
+- Node: <version>
+- TypeScript strict mode: <on/off>
+- Path alias(es): <e.g., "@/*" -> "src/*">
+- CSS: <CSS Modules | Tailwind | styled-components | others>
+- Testing: <Vitest | Jest> + <RTL | Cypress/Playwright>
+- Lint/format: ESLint + Prettier
+- Target browsers: <list>
+
+Definition of Done for code changes:
+- Keep public component props and exported APIs backward compatible unless asked otherwise.
+- Include minimal tests for new or changed behavior.
+- Accessibility is not regressed (keyboard + screen-reader basics).
+- Output format: <see toggles>.
+```
+
+### Output/guardrail toggles (add to any prompt)
+
+* **Output format:** `Return a unified diff (git patch) + a brief “What/Why/How to test” section.`
+* **Scope guard:** `Limit changes to the files I provide unless you explicitly list additional files first.`
+* **Safety:** `Don’t add new dependencies without proposing and getting approval; prefer standard libs.`
+* **Reasoning style:** `Provide a high-level plan and assumptions; no step-by-step internal chain-of-thought.`
+* **Explanations:** `Keep the explanation under 8 bullet points.`
+
+---
+
+## 1) Bug‑fix prompts
+
+**A. Reproduce & fix a runtime error**
+
+```
+Bug: <paste error message/stack>  
+Context: <paste component(s) and relevant utilities>  
+Task: Identify root cause, propose minimal fix, and return a diff.  
+Also include a quick repro note (steps or test) and why the fix is safe.
+<add toggles>
+```
+
+**B. TypeScript type error triage**
+
+```
+Type errors: <paste tsc/vite build output>  
+Goal: Resolve with the smallest accurate type changes. Prefer narrowing and generics over 'any'.  
+Return: diff + summary of changed types + how to test.  
+<add toggles>
+```
+
+**C. React rendering bug (stale state / double renders)**
+
+```
+Symptom: <describe>  
+Show: <component code>  
+Task: Diagnose rerender cause (state shape, effects, memoization). Fix without premature optimization.  
+Return a diff + before/after render path rationale.  
+<add toggles>
+```
+
+**D. Effect cleanup / memory leak**
+
+```
+Leak indicators: <DevTools/Profiler notes>  
+Code: <useEffect sections, subscriptions, timers>  
+Task: Add correct cleanup and stable deps; avoid extra renders.  
+Return diff + explanation of dependency choices.  
+<add toggles>
+```
+
+**E. Async bug in data fetching**
+
+```
+Bug: race conditions / flashing UI when route changes.  
+Code: <loader/fetch hook>  
+Task: Make requests cancelable or guarded; handle mounted/unmounted state; preserve optimistic UI if present.  
+Deliver diff + quick test plan.  
+<add toggles>
+```
+
+**F. Vite build error**
+
+```
+Build error: <vite output>  
+Files: <vite.config.ts, tsconfig.json, env usage>  
+Task: Pinpoint plugin/config mismatch; fix path aliases/env/base; ensure dev & build parity.  
+Return diff + a one-liner build command to validate.  
+<add toggles>
+```
+
+**G. Flaky test fix**
+
+```
+Test: <failing test & error>  
+Task: Make the test deterministic (awaits, timers, network mocks) without weakening assertions.  
+Return updated test diff + root-cause note.  
+<add toggles>
+```
+
+---
+
+## 2) Refactor prompts
+
+**H. Extract a custom hook from a fat component**
+
+```
+Component: <file> (≈<N> lines)  
+Goal: Extract stateful logic into `use<Feature>()` with typed API and unit tests.  
+No behavior change; preserve props and DOM.  
+Return diff + hook usage example.  
+<add toggles>
+```
+
+**I. Decompose a large component into feature modules**
+
+```
+Component: <file>  
+Task: Split into <X> presentational components + one container; keep unchanged public API.  
+Add index barrel files and types where helpful.  
+Return diff + updated import paths.  
+<add toggles>
+```
+
+**J. Improve prop types & defaults**
+
+```
+Target: <component(s)>  
+Task: Strengthen prop types (discriminated unions, exact string literals), add sensible defaults, and remove dead props.  
+Return diff + short migration notes (if any).  
+<add toggles>
+```
+
+**K. Replace prop drilling with context (or a small store)**
+
+```
+Symptom: <props passed through N levels>  
+Task: Introduce React context (or tiny store) with typed selectors; avoid unnecessary re-renders.  
+Return diff + explanation of memo boundaries.  
+<add toggles>
+```
+
+**L. Refactor API client**
+
+```
+Current code: <fetch wrapper/axios code>  
+Goal: Typed API layer with shared `Result<T, E>` or exceptions policy + response validators.  
+Return diff + example usage + tests.  
+<add toggles>
+```
+
+**M. Accessibility hardening**
+
+```
+Screens/Components: <list>  
+Task: Fix focus order, keyboard traps, ARIA roles/labels, color contrast (no visual redesign).  
+Return diff + a11y checklist of changes + how to validate with Axe.  
+<add toggles>
+```
+
+---
+
+## 3) Upgrade / migration prompts
+
+**N. Upgrade React to latest**
+
+```
+Goal: Upgrade React to the latest stable.  
+Files: package.json, main.tsx/root, Suspense/StrictMode usage.  
+Task: Update setup; note any deprecated APIs; ensure SSR/streaming compatibility if present.  
+Return diff + codemod-like steps + smoke test instructions.  
+<add toggles>
+```
+
+**O. Upgrade Vite to latest**
+
+```
+Goal: Upgrade Vite and essential plugins to latest stable.  
+Provide: `vite.config.ts`, plugin list, env usage, path aliases.  
+Task: Update config syntax, plugin options, env handling (`import.meta.env`), base/publicDir behavior.  
+Return diff + “dev/build/preview” commands to verify.  
+<add toggles>
+```
+
+**P. Upgrade TypeScript safely**
+
+```
+Current TS: <version if known>  
+Task: Upgrade TS + tsconfig (module, target, skipLibCheck strategy, moduleResolution) and fix new errors.  
+Return diff + rationale for each tsconfig change.  
+<add toggles>
+```
+
+**Q. React Router modernization**
+
+```
+Routes: <code>  
+Task: Migrate to latest router patterns (data APIs/loaders or route objects), remove dead routes, ensure code-splitting.  
+Return diff + navigation test updates.  
+<add toggles>
+```
+
+**R. Testing stack modernization**
+
+```
+Goal: Standardize on <Vitest + RTL> (or keep current).  
+Task: Update configs, test utils, jsdom setup; migrate common matchers.  
+Return diff + sample test conversions.  
+<add toggles>
+```
+
+**S. ESLint/Prettier rules refresh**
+
+```
+Current: <eslint config>  
+Task: Update to latest flat config (if desired), tighten React/TS rules, add import/order, no extraneous deps.  
+Return diff + autofix script.  
+<add toggles>
+```
+
+---
+
+## 4) Performance prompts
+
+**T. Code-splitting & lazy loading**
+
+```
+Modules: <list>  
+Task: Introduce dynamic imports and route-level/library-level splitting; ensure suspense boundaries and fallback UX.  
+Return diff + bundle impact estimates (rough) + validation steps.  
+<add toggles>
+```
+
+**U. Reduce unnecessary re-renders**
+
+```
+Screens: <list>  
+Task: Add memo/useMemo/useCallback strategically; restructure props to be stable; avoid inline object/function churn.  
+Return diff + before/after render count notes.  
+<add toggles>
+```
+
+**V. Virtualize long lists**
+
+```
+Component: <list view code>  
+Task: Add virtualization without breaking keyboard/a11y; keep item height variability in mind.  
+Return diff + test plan for scrolling and focus.  
+<add toggles>
+```
+
+---
+
+## 5) Security & robustness prompts
+
+**W. Prevent client‑side XSS / unsafe HTML**
+
+```
+Context: <where innerHTML/markdown is used>  
+Task: Sanitize content, constrain allowed tags/attrs, and centralize rendering; keep CSP considerations in mind.  
+Return diff + unit test that catches regression.  
+<add toggles>
+```
+
+**X. Error boundaries & retry UX**
+
+```
+High‑risk components: <list>  
+Task: Add error boundaries and minimal retry patterns; keep errors observable (console noise minimized).  
+Return diff + manual test steps.  
+<add toggles>
+```
+
+---
+
+## 6) Developer‑experience prompts
+
+**Y. Add Storybook for component docs (optional)**
+
+```
+Goal: Add Storybook with TS + Vite builder; create stories for <components>.  
+Task: Configure, add basic stories, and a11y addon; keep stories co-located.  
+Return diff + how to run.  
+<add toggles>
+```
+
+**Z. Pre-commit checks**
+
+```
+Goal: Add Husky + lint-staged (or alternative) to run typecheck, lint, and tests on staged files.  
+Return diff + setup commands.  
+<add toggles>
+```
+
+---
+
+## 7) “Surgical change” micro‑prompts (quick asks)
+
+* “**Spot the bug:** Here’s the component and failing behavior. Give me the smallest diff that fixes it.”
+* “**Explain this Vite warning** and show the minimal config change to silence it without hiding real issues.”
+* “**Tighten these types** (3–5 lines) to prevent `undefined` leaks—avoid `any` and `NonNullable` unless necessary.”
+* “**Make this effect safe** under Strict Mode and route changes; show updated dependency arrays.”
+* “**Convert this class component** to a functional component with hooks, diff only.”
+
+---
+
+## 8) Example (filled-in) — Bug‑fix
+
+```
+Bug: Clicking "Save" on <Route:/settings> does nothing; console shows:
+TypeError: cannot read properties of undefined (reading 'mutate')
+
+Files: src/routes/Settings.tsx, src/api/user.ts
+Task: Find root cause and fix with the smallest change. If it’s a missing provider or mismatched hook return, correct it. 
+Return: a unified diff + 5-bullet summary + how to verify in dev and a unit test outline.
+Scope guard: Only touch the two files above unless you list others first.
+```
+
+---
+
+## Tips for getting great results
+
+* **Always include code and logs** (component + related utils), not just symptoms.
+* **Paste `vite.config.ts` and `tsconfig.json`** for build/migration asks.
+* **Ask for a diff + test plan** so you can commit quickly.
+* **Use the scope guard** to prevent drive‑by changes.
+
+If you want, tell me your repo’s conventions (Node/TS versions, testing stack, path aliases), and I’ll tailor these templates even tighter to your setup.
