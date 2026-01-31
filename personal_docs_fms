@@ -1,0 +1,38 @@
+Migrations
+
+[5/13 10:32 AM] Pradosh Nair
+    Adding Migration - dotnet ef migrations add CarportBPNetData -o Migrations -s ./../../Presentation/FundManager.Web -c DocumentationDbContext
+​[5/13 10:33 AM] Pradosh Nair
+    Update Migration - dotnet ef database update --context DocumentationDbContext --startup-project ..\..\Presentation\FundManager.Web
+​[5/13 10:33 AM] Pradosh Nair
+    Seed Data - curl -X POST "https://localhost:44300/api/v1/documentation/seed" -d ""
+
+
+curl -X POST "https://localhost:44300/api/v1/security/seed?cleanDb=true" -d ""
+
+Interview Questions
+  1. How many people in your team? What's your role in your current work?
+How mcuh frontend how much backend?
+2. Could you share some experience with react in your last project? what's the folder structure?
+3. Tell me about a difficult technical issue you’ve encountered in a React project. What made it challenging, and how did you diagnose and resolve it? 
+4. Have you created any custom hooks, if so, why do we need customs hooks instead of regular functions.React usecallback, how to use them, why to use them.
+5. Refs (if they didn't answer the last question), how to use refs in react.
+6, Could you explain your experience with state management in React applications ?
+JS/TS
+are you familiar with array build-in methods. array.reduce()? explain the parameters in array.reduce() method
+You know typescripts right? Could you give me some examples of Utility types like Partial<T>, Pick<T,K>, Record<K,T>?
+What's is generics? Normally when and how you use them?
+SCSS
+Do you familiar with scss?
+How to make multiple elements always have same height? 
+what does flex-wrap do?
+Some examples of pesudo-class
+Redux
+How to use redux with hooks? How did you do state management? Do you use Redux or context, which do you prefer?
+Test
+How to inspect api calls on the browser? what devtools should you use?
+How to check render time?
+Authentication
+Explain how token works. How can a user get authenticated in the system.Explain the SSO.
+
+
