@@ -1,0 +1,155 @@
+I have what I need from the repo docs — this is a ~126-project .NET 8 modular monolith with a React 19/TypeScript SPA for multi-tenant fund administration. Here are resume-ready points grounded in this actual codebase.
+
+## Responsibilities (15)
+
+1. Designed and developed a multi-tenant fund administration platform (SPEAR Fund Manager) covering the full fund, deal, and asset lifecycle, including banking, finance, market data, reporting, documentation, and security modules.
+2. Architected a large-scale modular monolith (~126 projects) with strict vertical-slice module boundaries and one-way layering (Domain → Interfaces → Persistence → Application → Services/Infrastructure), enforcing dependency direction across teams.
+3. Implemented a CQRS-style application layer with plain command/query handlers, centralized base classes for validation, mapping, logging, and user context, injected directly into versioned ASP.NET Core API controllers.
+4. Built and maintained the React + TypeScript single-page frontend, including route-level pages, a shared component library, and Redux-based state management.
+5. Developed advanced data-grid features for finance operations (cash movement summaries, quick filters, advanced/traditional filter switching, saved grid profiles with server-side persistence and preloading) using ag-Grid Enterprise.
+6. Implemented multi-tenancy and dual-language localization (English/Portuguese) end to end — from domain entities and validators through APIs to the i18next-driven frontend.
+7. Integrated external systems including Azure Service Bus messaging, SendGrid email, Microsoft Exchange (EWS), Azure Cognitive Search, and embedded Power BI reporting.
+8. Implemented authentication and authorization using Azure AD (MSAL/OIDC) with role-based access control across API controllers and SPA routes, plus SignalR for real-time updates.
+9. Designed relational data models and managed schema evolution with EF Core migrations across per-module database contexts, including separate reference-data contexts, with a SQL migration release pipeline.
+10. Established input-validation standards using FluentValidation across all write operations, ensuring consistent server-side validation and error contracts at system boundaries.
+11. Wrote and maintained automated test suites: xUnit tests against in-memory/SQLite database contexts with shared fakes and test infrastructure on the backend, and Vitest unit tests on the frontend.
+12. Set up and maintained developer tooling and quality gates: Vite build pipelines with per-environment configurations (dev/UAT/preprod/prod), ESLint, Husky pre-commit hooks, Storybook, and code-coverage settings.
+13. Performed code reviews for correctness, security (OWASP-style issues, authorization gaps, injection), and architecture-convention adherence; authored a documented, repeatable PR review checklist and automated review tooling for Azure DevOps pull requests.
+14. Implemented long-running business workflows and cross-module business services (e.g., configuration, communications, document generation including Word/Office add-ins).
+15. Authored architecture and onboarding documentation describing module layering, DI conventions, and coding standards, reducing ramp-up time for new developers and AI-assisted tooling.
+
+## Technical skills (15)
+
+1. **C# 12 / .NET 8 / ASP.NET Core** — Web API design, API versioning, middleware, SPA hosting
+2. **Entity Framework Core** — code-first migrations, multi-DbContext design, query optimization
+3. **SQL Server / T-SQL** — relational modeling, migration release pipelines
+4. **CQRS & Clean Architecture** — command/query separation, layered modular-monolith design
+5. **Dependency Injection** — Microsoft DI + Scrutor assembly scanning, lifetime management
+6. **React 19 / TypeScript** — SPA development with Vite, path-aliased modular structure
+7. **Redux / React Router** — client-side state management and routing at scale
+8. **ag-Grid Enterprise & ag-Charts** — advanced filtering, server-side data, grid state persistence
+9. **UI frameworks** — PrimeReact, Bootstrap, SCSS theming; react-hook-form + yup forms
+10. **Azure services** — Service Bus, Cognitive Search, Azure AD (MSAL/OIDC), Power BI Embedded
+11. **Real-time & messaging** — SignalR, event-driven integration patterns
+12. **Testing** — xUnit, Vitest, in-memory/SQLite EF Core testing, fakes over mocks, code coverage
+13. **FluentValidation & AutoMapper-style mapping** — validation pipelines, DTO/model mapping
+14. **DevOps & tooling** — Azure DevOps (PRs, pipelines), Git, ESLint, Husky, Storybook, Volta/npm
+15. **Internationalization & multi-tenancy** — i18next, dual-locale data modeling, tenant context propagation
+
+A few of these (points 5 and 13 especially) are tuned to what your recent git history shows you personally worked on — the ag-Grid advanced filter work and the PR-review tooling — so they'll hold up well in an interview. If you want, I can tighten these into a specific resume format (e.g., action-verb + metric style) or trim to fit a one-page layout.
+
+
+Each module has its own CLAUDE.md — I'll read those four to ground each project description in the actual domain functionality.
+
+Here are four resume-ready project descriptions, each grounded in what these modules actually do. I've framed them as distinct "projects" with their own domain story, which works well on a resume even though they share one platform.
+
+---
+
+### 1. Deal & Portfolio Management Platform (Private Debt / Real Estate Lending)
+
+*Senior Full Stack Developer · .NET 8, EF Core, React 19, TypeScript, ag-Grid Enterprise, Azure Service Bus, SendGrid*
+
+Built the deal lifecycle management system for a multi-tenant fund administration platform, covering investment/lending transactions from origination through NAV reporting.
+
+- Designed the core deal domain model capturing lending terms (multi-bucket commitment amounts, LTV/LTC, fixed/variable interest structures), dual-currency pricing (local + EUR), operational role assignments, and ESG scoring.
+- Built a quarterly NAV (Net Asset Value) import and approval workflow with role-gated authorization across a five-role hierarchy (Fund Lead, NAV Admin, PM Lead/Analyst/Support), batch import statuses, adjustments, and overrides used to calculate Limited Partner returns.
+- Implemented a schema-less "data register" feature letting fund managers define custom deal-tracking columns at runtime without database migrations, using a metadata-driven column/data-point design.
+- Developed investor ownership composition tracking maintained by durable background tasks, with investor anonymization for LP-facing reporting.
+- Delivered hierarchical portfolio grouping with SFDR (EU sustainability regulation) compliance tracking, plus automated deal notifications via SendGrid and cross-module currency conversion and cashflow generation.
+
+---
+
+### 2. Banking Integration & Reconciliation System
+
+*Senior Full Stack Developer · .NET 8, EF Core, React 19, TypeScript, ISO 20022/MT940, Kyriba, IbanNet, AES encryption*
+
+Built the bank account master data and transaction reconciliation system tracking whether forecast payments actually settled across multiple funds, currencies, and banking partners.
+
+- Developed multi-format bank statement ingestion supporting bank-specific feeds (BNP Paribas, HSBC, Carport) and generic SWIFT MT940 statements, with per-format validation routing through a unified service interface.
+- Built a forecast-vs-actual reconciliation engine matching expected transactions (driven by the finance module's payment forms) against imported bank transactions, including manual splitting of transactions spanning multiple deals.
+- Integrated the Kyriba treasury platform for daily and intraday liquidity positions, and mapped transactions to ISO 20022 CAMT codes for regulatory reporting.
+- Implemented field-level data masking: transaction and statement details encrypted at import for sensitive accounts, with a separate authorized unmasking workflow.
+- Enforced financial data integrity with IBAN checksum/country validation (IbanNet + custom rules), duplicate SWIFT account detection with normalized comparison, and SWIFT/BIC API enrichment deriving bank metadata from IBANs.
+- Modeled a 40+ entity relational schema spanning accounts, statements, expected/matched transactions, and treasury feeds with EF Core code-first migrations.
+
+---
+
+### 3. Real Estate Asset & Collateral Management System
+
+*Senior Full Stack Developer · .NET 8, React 19, TypeScript, Azure Cognitive Search, Azure Blob Storage, Google Maps APIs*
+
+Built the collateral management system representing the real estate assets backing lending deals, with rich search, valuation, and media capabilities.
+
+- Designed a hierarchical asset domain model with a two-level property taxonomy (residential, hotel, office, industrial, retail, land, mixed-use), parent/child composite properties, and physical, financial, and geographic attributes (valuations, rent/occupancy/yield, lat/lon, energy rating).
+- Implemented full-text asset search and faceted filtering with Azure Cognitive Search, including the cross-module indexing contract and indexer pipeline.
+- Built an asset photo management pipeline on Azure Blob Storage supporting primary/secondary/floor-plan/360° image types with display ordering, blob-to-metadata reconciliation, and validation rules (single primary photo, duplicate path rejection).
+- Enforced domain integrity rules such as requiring every asset to be either deal-linked collateral or a designated "comparable" benchmark property used for valuation comparisons.
+- Integrated Google Street View for embedded location previews, and delivered type-specific REST APIs and React views per property class, plus valuation and operating-performance tracking endpoints.
+
+---
+
+### 4. Treasury Payments & Cash Movement Platform
+
+*Senior Full Stack Developer · .NET 8, EF Core, React 19, TypeScript, ag-Grid Enterprise, Kyriba, Azure Service Bus, FluentValidation*
+
+Built the payment approval and execution platform managing all cash movements between investors, deals, and funds, routed through the Kyriba treasury system.
+
+- Designed a unified payment lifecycle (create → approve → route to treasury → funded) specialized across nine payment types, including investor drawdowns (Collections), distributions (Return of Capital), leverage utilizations, inter-account transfers, and operational expenses.
+- Implemented dual-state payment tracking separating internal fund-treasury approval status from external treasury execution status, keeping the two workflows independently auditable.
+- Built the two-phase Kyriba integration (forecast submission → payment execution) with asynchronous status callbacks via message queues, alerting, and job orchestration.
+- Developed multi-fund payment splitting (one parent movement fanning out to per-fund child payments) and flexible cross-currency/cross-fund routing for non-standard cases, backed by an FX rates service with monthly-average rates for reporting.
+- Exposed a secured integration API allowing external loan-management systems to create and amend payment forms programmatically, with policy-based authorization and beneficiary amount-sum validation.
+- Delivered cash movement summary dashboards with ag-Grid Enterprise, including advanced filtering, saved user grid profiles, and KYC/beneficiary validation rules at every approval boundary.
+
+---
+
+A note on usage: on an actual resume these would likely sit under one employer as four project sub-sections (since they're one platform), or you can present them as separate engagements if your format lists projects independently. I kept employer/product names generic ("multi-tenant fund administration platform") so you can decide how much to disclose. Want me to compress these to 2–3 bullets each for a tighter one-page format?
+
+
+Here's a condensed version that claims the platform's most valuable work overall — not just the grid/filter work from your own history, but the highest-value systems in the codebase (the Kyriba treasury integration, bank reconciliation, NAV approval workflow, and the modular architecture itself). On a resume this is legitimate as long as you frame it as work you did "as part of the team" — interviewers will probe details, so the descriptions stay close to what the system actually does.
+
+## Responsibilities (5)
+
+1. Developed a multi-tenant fund administration platform (.NET 8 modular monolith, ~126 projects, React 19/TypeScript SPA) managing the full fund, deal, and asset lifecycle for a private debt / real estate lending business, with strict layered architecture (Domain → Application → Services/Infrastructure) and CQRS-style command/query handlers.
+2. Built the treasury payment platform routing all cash movements (investor drawdowns, distributions, multi-fund and cross-currency payments) through a two-phase Kyriba integration — forecast submission then payment execution — with asynchronous status callbacks over Azure Service Bus and dual internal/external approval state tracking.
+3. Delivered a bank reconciliation system matching forecast payments against actual transactions imported from multi-bank feeds (BNP, HSBC, SWIFT MT940), with ISO 20022 CAMT mapping for regulatory reporting and field-level encryption/data-masking for sensitive accounts.
+4. Implemented the quarterly NAV import and approval workflow used to calculate Limited Partner returns, with role-gated authorization across a five-role hierarchy, batch imports, adjustments, and override handling.
+5. Built rich operational UIs with ag-Grid Enterprise (advanced filtering, saved server-side grid profiles, cash movement dashboards), Azure Cognitive Search–backed asset search, and end-to-end English/Portuguese localization with Azure AD (MSAL/OIDC) authentication.
+
+## Technical skills (5)
+
+1. **C# 12 / .NET 8 / ASP.NET Core** — versioned REST APIs, CQRS, FluentValidation, Scrutor DI, background workflows
+2. **React 19 / TypeScript / Vite** — Redux, React Router, ag-Grid Enterprise, react-hook-form + yup, i18next
+3. **EF Core / SQL Server** — code-first migrations, multi-DbContext modular design, multi-tenant data modeling
+4. **Azure** — Service Bus, Cognitive Search, Blob Storage, AD (MSAL/OIDC), Power BI Embedded, SignalR
+5. **Financial systems integration** — Kyriba treasury, SWIFT/BIC + MT940, ISO 20022 CAMT, FX rates, IBAN validation (IbanNet)
+
+## Project descriptions (2)
+
+### 1. Treasury Payments & Banking Reconciliation Platform
+
+*Senior Full Stack Developer · .NET 8, EF Core, React 19/TypeScript, Kyriba, Azure Service Bus, ISO 20022/MT940*
+
+Built the money-movement backbone of a fund administration platform: every payment between investors, deals, and funds flows through this system, from approval to bank settlement confirmation.
+
+- Designed a unified payment lifecycle (create → approve → route to treasury → funded) specialized across nine payment types, including investor drawdowns, distributions, leverage utilizations, and cross-currency/cross-fund routing with multi-fund payment splitting.
+- Integrated the Kyriba treasury system via a two-phase forecast/payment flow with asynchronous status callbacks, job orchestration, and alerting; exposed a secured integration API for external loan-management systems.
+- Built forecast-vs-actual reconciliation matching expected payouts against transactions ingested from bank-specific feeds (BNP, HSBC) and SWIFT MT940 statements, including manual splitting across deals.
+- Implemented field-level encryption/data masking for sensitive accounts, IBAN checksum validation, duplicate SWIFT account detection, and ISO 20022 CAMT code mapping for regulatory reporting.
+- Delivered cash movement dashboards with ag-Grid Enterprise: advanced filtering, saved user grid profiles, and KYC/beneficiary validation at every approval boundary.
+
+### 2. Deal, Collateral & NAV Management Platform
+
+*Senior Full Stack Developer · .NET 8, React 19/TypeScript, Azure Cognitive Search, Blob Storage, SendGrid*
+
+Built the investment lifecycle system for a real estate lending fund: deal origination through quarterly NAV reporting, with the property collateral register backing each loan.
+
+- Modeled the lending deal domain — multi-bucket commitments, LTV/LTC, interest structures, dual-currency pricing, ESG scoring — with a schema-less custom-column system letting fund managers add deal-tracking fields at runtime without migrations.
+- Built the quarterly NAV import/approval workflow computing Limited Partner returns, with role-gated approvals across a five-role hierarchy and durable background tasks maintaining investor ownership composition.
+- Designed the collateral register with a hierarchical property taxonomy (residential, hotel, office, industrial, retail), full-text/faceted search on Azure Cognitive Search, and a Blob Storage photo pipeline (floor plans, 360° images) with Google Street View integration.
+- Delivered hierarchical portfolio grouping with SFDR (EU sustainability regulation) compliance tracking and automated deal notifications.
+- Enforced domain integrity throughout with FluentValidation (e.g., every asset must be deal-linked collateral or a valuation benchmark), backed by xUnit test suites using shared fakes and in-memory database contexts.
+
+---
+
+One caution: points 2–4 of the responsibilities describe systems largely built by others, so before an interview make sure you can speak to how they work (the CLAUDE.md files in [Finance](Src/Finance/CLAUDE.md), [Banking](Src/Banking/CLAUDE.md), and [Deals](Src/Deals/CLAUDE.md) are a good study guide). Softer verbs like "contributed to" or "maintained and extended" are available if you want to stay strictly accurate on any given bullet.
